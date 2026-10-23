@@ -5,7 +5,7 @@
 ## 0. 当前状态
 
 - 项目：把 Windows 动态壁纸引擎 **Octos** 从 C++/Win32 重写为 **Rust + WebView2 + React**，保留旧 mod 生态。
-- 阶段：**M4 完成（验收报告 `docs/m4-acceptance.md`）**：i18n、Library、按显示器选择、选项表单、zip/文件夹/拖拽安装、卸载、错误 toast、`preferences.json` v2 持久化（选中项 + modOptions + appOptions + 窗口位置）、CLI（`run/reload/new/dev-tools` + `WM_COPYDATA` 第二实例转发）、Settings 三个真实开关（开机启动/全屏暂停/硬件加速）、Win11 Fluent UI 收尾（骨架屏/空态/图片懒加载/键盘导航/InfoBar toast/窗口位置恢复）均已实装并实机验证。`允许通知` 按用户决定不做（M8 占位）。**M5 完成**：prefs 250ms debounce/退出 flush/`.bak`、ProcessFailed renderer 恢复、边框全屏 + 真实 PotPlayer 全屏、Explorer 重启、桌面矩阵、窗口位置均已完成并实测；DPI 100/150% UI 截图、200% 桌面层级通过（见 `docs/m5-hardening.md`）。**多显示器基础链路已完成**：设备名优先匹配、热插拔恢复/默认壁纸、UI 刷新、每屏壁纸/overlay、跨屏 `redirect`、`DisplaySwitch` 插拔、鼠标路由均已实测（见 `docs/multimonitor.md`）。下一步：每屏 localStorage 隔离（解决同一壁纸在不同 DPI/比例下的设置冲突），随后 M6。**M3 已完成**：`sdk/` 冻结、`octos-core`（31 tests）、`octos-protocol`（10 tests）、`octos-storage`（20 tests）、壁纸宿主请求链 + options 事件/hooks + 旧 `octos.min.js` conformance；仅剩 redirect 多显示器实机验证。M2 核心验收通过（多显示器/真实游戏/ProcessFailed 为已知缺口）。报告：`docs/m0-spike.md`、`docs/m1-shell.md`、`docs/m2-wallpaper.md`、`docs/m2-acceptance.md`、`docs/m3-plan.md`、`docs/m3-conformance.md`、`docs/m4-plan.md`、`docs/m4-acceptance.md`、`docs/upstream-map.md`、`docs/ux-review-checklist.md`。
+- 阶段：**M4 完成（验收报告 `docs/m4-acceptance.md`）**：i18n、Library、按显示器选择、选项表单、zip/文件夹/拖拽安装、卸载、错误 toast、`preferences.json` v2 持久化（选中项 + modOptions + appOptions + 窗口位置）、CLI（`run/reload/new/dev-tools` + `WM_COPYDATA` 第二实例转发）、Settings 三个真实开关（开机启动/全屏暂停/硬件加速）、Win11 Fluent UI 收尾（骨架屏/空态/图片懒加载/键盘导航/InfoBar toast/窗口位置恢复）均已实装并实机验证。`允许通知` 按用户决定不做（M8 占位）。**M5 完成**：prefs 250ms debounce/退出 flush/`.bak`、ProcessFailed renderer 恢复、边框全屏 + 真实 PotPlayer 全屏、Explorer 重启、桌面矩阵、窗口位置均已完成并实测；DPI 100/150% UI 截图、200% 桌面层级通过（见 `docs/m5-hardening.md`）。**多显示器基础链路已完成**：设备名优先匹配、热插拔恢复/默认壁纸、UI 刷新、每屏壁纸/overlay、跨屏 `redirect`、`DisplaySwitch` 插拔、鼠标路由均已实测；**每屏 localStorage/sessionStorage 隔离**已实现并验证（见 `docs/multimonitor.md`）。下一项：图片壁纸导入，随后 M6。**M3 已完成**：`sdk/` 冻结、`octos-core`（33 tests）、`octos-protocol`（10 tests）、`octos-storage`（20 tests）、壁纸宿主请求链 + options 事件/hooks + 旧 `octos.min.js` conformance；仅剩 redirect 多显示器实机验证。M2 核心验收通过（多显示器/真实游戏/ProcessFailed 为已知缺口）。报告：`docs/m0-spike.md`、`docs/m1-shell.md`、`docs/m2-wallpaper.md`、`docs/m2-acceptance.md`、`docs/m3-plan.md`、`docs/m3-conformance.md`、`docs/m4-plan.md`、`docs/m4-acceptance.md`、`docs/upstream-map.md`、`docs/ux-review-checklist.md`。
 - 新仓库：`/home/lzt/codehub/rust/octos/octos-rs`（本目录）。
 - 上游参考：`/home/lzt/codehub/rust/octos/octos`，**只读**，用于行为对照和兼容性测试。Rust ↔ C++ 的模块映射、有意差异和已踩过的偏差见 `docs/upstream-map.md`；新增 Win32/WebView2 行为前先对照它。
 - 已批准计划：`~/.claude/plans/unified-dancing-lollipop.md`。仓库内的架构决策写到 `docs/`。
@@ -129,7 +129,7 @@ octos-rs/
 - **mod 身份用绝对文件夹路径**（旧 prefs 的 `modOptions/selected` 键依赖它）。不要改成 folder name 归一化。
 - **prefs 原子写**：同目录临时文件（进程 id + 原子计数）→ flush/`sync_all` → `ReplaceFileW`，保留 `.bak`；失败回退 `MoveFileExW`。UI 线程只提交快照，`PrefsWriter` 后台线程 debounce 250ms，退出前 flush 并 join。损坏文件隔离为 `.corrupt-<timestamp>`。
 - **MVP 媒体/音频是协议桩**：requests 永远 resolve 空/默认值，命令静默忽略，订阅接受但不推送。不能模块化地“暂时不支持”导致 Promise 挂起。
-- **虚拟主机**：`app.octos` → `<exe>/app`，`local.octos` → wallpapers 目录。mod entry/image 生成 URL 时做百分号编码。
+- **虚拟主机**：`app.octos` → `<exe>/app`，`local.octos` → wallpapers 目录。mod entry/image 生成 URL 时做百分号编码。壁纸 WebView 注入每屏存储前缀（`octos-core::storage_scope`），主 UI 不注入。
 - **错误处理**：库层 `thiserror`，app 层 `anyhow`；FFI 回调里不要 `unwrap`/`panic`，记录日志并返回失败。
 - **日志**：`tracing` + 滚动文件，`%LOCALAPPDATA%\Octos\logs`（测试走 `OCTOS_DATA_DIR`）。GUI 进程没有控制台。
 
@@ -256,7 +256,7 @@ M3 进度 / 下一步（详见 `docs/m3-plan.md`）：
 
 1. [x] `sdk/` 冻结旧 JS API（src + rollup + README）。
 2. [x] `octos-core::manifest` + fixtures + 7 个单测。
-3. [x] `octos-core::catalog/options/session/hooks/prefs/cli` + 单测（core 共 31 个测试）。
+3. [x] `octos-core::catalog/options/session/hooks/prefs/cli/storage_scope` + 单测（core 共 33 个测试）。
 4. [x] `octos-protocol`：mod request/command/subscribe/event + `WallpaperHost` 分发 + mock 单测（protocol 共 10 个测试）。
 5. [x] 壁纸侧 `System`/`UserOptions`(requestOptions/setOption)/`MonitorBridge` + 媒体桩；旧 `octos.min.js` conformance 请求侧通过。
 6. [x] 选项由 Rust 直接回答；options-load/change + hooks 顺序/字符串化已实测。

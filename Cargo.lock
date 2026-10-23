@@ -407,6 +407,7 @@ name = "octos-webview"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "octos-core",
  "octos-protocol",
  "serde_json",
  "tracing",

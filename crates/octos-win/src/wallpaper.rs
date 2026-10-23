@@ -692,6 +692,7 @@ impl WallpaperState {
             hwnd,
             wallpapers_dir,
             entry_url,
+            device_name.clone(),
             move |webview, text| {
                 handle_wallpaper_message(&message_device, hwnd, webview, text);
             },

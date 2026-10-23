@@ -12,7 +12,8 @@ use anyhow::{Result, anyhow};
 use octos_protocol::{UiRequest, UiResponse};
 use tracing::{debug, info, warn};
 use webview2_com::{
-    CoreWebView2EnvironmentOptions, CreateCoreWebView2CompositionControllerCompletedHandler,
+    AddScriptToExecuteOnDocumentCreatedCompletedHandler, CoreWebView2EnvironmentOptions,
+    CreateCoreWebView2CompositionControllerCompletedHandler,
     CreateCoreWebView2ControllerCompletedHandler, CreateCoreWebView2EnvironmentCompletedHandler,
     Microsoft::Web::WebView2::Win32::*, NavigationCompletedEventHandler, ProcessFailedEventHandler,
     WebMessageReceivedEventHandler, take_pwstr,
@@ -406,6 +407,7 @@ impl CompositionDevice {
         hwnd: HWND,
         wallpapers_dir: PathBuf,
         entry_url: String,
+        monitor_id: String,
         mut on_message: impl FnMut(&ICoreWebView2, &str) + 'static,
         mut on_loaded: impl FnMut(&ICoreWebView2) + 'static,
         mut on_process_failed: impl FnMut(&ICoreWebView2, COREWEBVIEW2_PROCESS_FAILED_KIND) + 'static,
@@ -459,6 +461,30 @@ impl CompositionDevice {
                         GetClientRect(hwnd, &mut client)?;
                         controller.SetBounds(client)?;
                         controller.SetIsVisible(true)?;
+
+                        // Isolate local/session storage per monitor before the
+                        // page runs, so wallpapers with their own settings panel
+                        // can keep different scale/position values per display.
+                        let scope = octos_core::storage_scope::script(&monitor_id);
+                        let scope_wide = wide(&scope);
+                        let scope_handler =
+                            AddScriptToExecuteOnDocumentCreatedCompletedHandler::create(Box::new(
+                                |result, script_id| {
+                                    match result {
+                                        Ok(()) => {
+                                            debug!("storage scope script installed: {script_id}")
+                                        }
+                                        Err(err) => {
+                                            warn!("could not install storage scope script: {err:?}")
+                                        }
+                                    }
+                                    Ok(())
+                                },
+                            ));
+                        webview.AddScriptToExecuteOnDocumentCreated(
+                            PCWSTR::from_raw(scope_wide.as_ptr()),
+                            &scope_handler,
+                        )?;
                         webview.Navigate(PCWSTR::from_raw(url_wide.as_ptr()))?;
 
                         let message_handler = WebMessageReceivedEventHandler::create(Box::new(

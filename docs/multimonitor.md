@@ -62,11 +62,30 @@
 | 热插拔 | `DisplaySwitch /internal` 后只剩 DISPLAY2，UI 更新为 1 屏；`/extend` 后自动恢复 DISPLAY1 的 L2D，controller 重建，PASS |
 | 鼠标路由 | 光标移到 DISPLAY1 区域，日志显示转发到对应壁纸 HWND |
 
-## 4. 已知问题：同一壁纸在不同屏上的内部布局
+## 4. 每屏 localStorage 隔离（已实现）
 
-L2D 壁纸把 `scale/x/y` 等设置存在 **localStorage**，而所有显示器共用 `https://local.octos` origin，存储是共享的。同一份设置被应用到 1440×900（DPR 2）和 2560×1440（DPR 1.5），加上 16:10 / 16:9 比例差异，就会出现位置/大小不一致。
+L2D 壁纸把 `scale/x/y` 等设置存在 **localStorage**，而所有显示器共用 `https://local.octos` origin，存储原本是共享的。同一份设置被应用到 1440×900（DPR 2）和 2560×1440（DPR 1.5），加上 16:10 / 16:9 比例差异，就会出现位置/大小不一致。
 
-下一步实现“每屏 localStorage 隔离”：在壁纸 WebView 创建时注入存储命名空间脚本，让每块屏的 `localStorage`/`sessionStorage` key 带上显示器前缀，这样壁纸自带的设置面板可以为每块屏独立保存。该方案不修改 mod 文件，也不改变 origin 或协议。
+实现：
+
+- 壁纸 WebView 创建时用 `AddScriptToExecuteOnDocumentCreated` 注入 `octos_core::storage_scope::script`。
+- 脚本在页面脚本之前包装 `Storage.prototype.getItem/setItem/removeItem/clear/key/length`，key 统一加 `__octos_monitor__<device>:` 前缀。
+- 旧的无前缀 localStorage 值会在首次加载时复制到每块屏的命名空间，保留升级前设置。
+- 已修复首版迁移造成的嵌套前缀，并在脚本启动时自愈清理嵌套 key。
+- 只影响壁纸 WebView；主 UI 不注入。origin、mod 协议、`local.octos` 都不变。
+
+实测：
+
+| 测试 | 结果 |
+|---|---|
+| 新 key 首次写入 | 两屏 `existing=null`，分别写入自己的 monitor id |
+| 重启后 | DISPLAY1 读到 DISPLAY1，DISPLAY2 读到 DISPLAY2 |
+| 旧 L2D 设置迁移 | 两屏都能读到 `CH0326_home.skel` 的 `scale=0.42 x=727 y=798 resolution=4k` |
+| 清理 | 测试 key 删除后每屏只剩自己的 L2D 设置命名空间 |
+
+现在可以在每块屏打开 L2D 自带的设置面板（鼠标移到右上角），分别调整 `scale/x/y`；两块屏互不覆盖，重启后各自保留。
+
+**边界**：该方案覆盖 localStorage/sessionStorage。若某个壁纸使用 IndexedDB 或 cookie 存设置，需要后续扩展；若壁纸没有内部设置，则需要宿主级 zoom/offset 方案。
 
 ## 5. 未覆盖
 

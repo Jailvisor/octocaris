@@ -22,4 +22,6 @@ pub mod options;
 
 pub mod session;
 
+pub mod storage_scope;
+
 pub mod prefs;
