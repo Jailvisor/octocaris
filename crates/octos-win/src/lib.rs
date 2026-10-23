@@ -15,7 +15,10 @@ use std::time::Duration;
 use anyhow::{Result, anyhow};
 use octos_core::prefs::WindowPlacement;
 use tracing::{info, warn};
-use webview2_com::Microsoft::Web::WebView2::Win32::{ICoreWebView2, ICoreWebView2Controller};
+use webview2_com::Microsoft::Web::WebView2::Win32::{
+    ICoreWebView2, ICoreWebView2_3, ICoreWebView2Controller,
+};
+use webview2_com::TrySuspendCompletedHandler;
 use windows::Win32::Foundation::{
     CloseHandle, ERROR_ALREADY_EXISTS, GetLastError, HANDLE, HLOCAL, HWND, LPARAM, LRESULT,
     LocalFree, POINT, RECT, WPARAM,
@@ -34,7 +37,7 @@ use windows::Win32::UI::Shell::{
     NIF_TIP, NIM_ADD, NIM_DELETE, NOTIFYICONDATAW, Shell_NotifyIconW,
 };
 use windows::Win32::UI::WindowsAndMessaging::*;
-use windows::core::{PCWSTR, w};
+use windows::core::{Interface, PCWSTR, w};
 
 pub mod desktop_icons;
 pub mod startup;
@@ -53,6 +56,11 @@ const TRAY_TIP: &str = "Octos";
 const DEVTOOLS_TIMER_ID: usize = 3;
 static DEVTOOLS_ATTEMPTS: AtomicU8 = AtomicU8::new(0);
 
+type DropHandler = Rc<dyn Fn(Vec<PathBuf>)>;
+type CommandHandler = Rc<dyn Fn(&str)>;
+type PlacementHandler = Rc<dyn Fn(WindowPlacement)>;
+type DisplayChangeHandler = Rc<dyn Fn()>;
+
 #[derive(Default)]
 struct WinState {
     hwnd: HWND,
@@ -61,10 +69,10 @@ struct WinState {
     tray_added: bool,
     taskbar_created: u32,
     quitting: bool,
-    drop_handler: Option<Rc<dyn Fn(Vec<PathBuf>)>>,
-    command_handler: Option<Rc<dyn Fn(&str)>>,
-    placement_handler: Option<Rc<dyn Fn(WindowPlacement)>>,
-    display_change_handler: Option<Rc<dyn Fn()>>,
+    drop_handler: Option<DropHandler>,
+    command_handler: Option<CommandHandler>,
+    placement_handler: Option<PlacementHandler>,
+    display_change_handler: Option<DisplayChangeHandler>,
 }
 
 thread_local! {
@@ -100,7 +108,7 @@ pub fn acquire_single_instance() -> Result<InstanceGuard> {
 /// Register the handler that receives a command line forwarded by a second
 /// instance. It runs on the UI thread, inside the window procedure.
 pub fn set_command_handler(handler: impl Fn(&str) + 'static) {
-    let _ = with_state(|state| state.command_handler = Some(Rc::new(handler)));
+    with_state(|state| state.command_handler = Some(Rc::new(handler)));
 }
 
 /// The process command line, including the executable path.
@@ -320,13 +328,13 @@ pub fn create_main_window(saved: Option<WindowPlacement>) -> Result<HWND> {
 /// Register a callback that runs after a display topology change has been
 /// reconciled (monitors added/removed/rearranged).
 pub fn set_display_change_handler(handler: impl Fn() + 'static) {
-    let _ = with_state(|state| state.display_change_handler = Some(Rc::new(handler)));
+    with_state(|state| state.display_change_handler = Some(Rc::new(handler)));
 }
 
 /// Receive the main window's normal (non-maximized) rectangle as it moves or
 /// resizes. The app stores it in preferences and writes it on exit.
 pub fn set_window_placement_handler(handler: impl Fn(WindowPlacement) + 'static) {
-    let _ = with_state(|state| state.placement_handler = Some(Rc::new(handler)));
+    with_state(|state| state.placement_handler = Some(Rc::new(handler)));
 }
 
 fn report_window_placement(hwnd: HWND) {
@@ -366,6 +374,42 @@ pub fn post_to_main_webview(payload: &str) {
     }
 }
 
+/// Pause/resume the main React UI when the window is hidden to the tray or
+/// restored. `TrySuspend` frees the renderer while the window is not visible;
+/// `Resume` runs before showing it again.
+fn set_main_webview_active(active: bool) {
+    let controller = with_state(|state| state.controller.clone());
+    let webview = with_state(|state| state.webview.clone());
+    if active {
+        if let Some(webview) = &webview
+            && let Ok(webview3) = webview.cast::<ICoreWebView2_3>()
+        {
+            let _ = unsafe { webview3.Resume() };
+        }
+        if let Some(controller) = controller {
+            let _ = unsafe { controller.SetIsVisible(true) };
+        }
+        info!("main UI resumed");
+    } else {
+        if let Some(controller) = controller {
+            let _ = unsafe { controller.SetIsVisible(false) };
+        }
+        if let Some(webview) = &webview
+            && let Ok(webview3) = webview.cast::<ICoreWebView2_3>()
+        {
+            let handler = TrySuspendCompletedHandler::create(Box::new(|result, suspended| {
+                match result {
+                    Ok(()) => info!("main UI suspend completed: {suspended}"),
+                    Err(err) => warn!("could not suspend main UI: {err:?}"),
+                }
+                Ok(())
+            }));
+            let _ = unsafe { webview3.TrySuspend(&handler) };
+        }
+        info!("main UI suspended (window hidden)");
+    }
+}
+
 pub fn set_webview(controller: ICoreWebView2Controller, webview: ICoreWebView2) {
     with_state(|state| {
         state.controller = Some(controller);
@@ -400,6 +444,7 @@ pub fn restore_main_window() {
     };
 
     if let Some(hwnd) = hwnd {
+        set_main_webview_active(true);
         unsafe {
             let _ = ShowWindow(hwnd, SW_SHOW);
             let _ = SetForegroundWindow(hwnd);
@@ -543,10 +588,12 @@ unsafe extern "system" fn wndproc(
             LRESULT(0)
         }
         WM_CLOSE => {
-            // Close to tray; Quit is a separate tray-menu action.
+            // Close to tray; Quit is a separate tray-menu action. Pause the
+            // hidden React UI so it does not keep the GPU/renderer active.
             unsafe {
                 let _ = ShowWindow(hwnd, SW_HIDE);
             }
+            set_main_webview_active(false);
             LRESULT(0)
         }
         WM_DESTROY => {

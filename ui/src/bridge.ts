@@ -29,6 +29,8 @@ export type SettingsSnapshot = {
   enableGpu: boolean
   pauseFullscreen: boolean
   maxFps: number
+  memorySaver: boolean
+  liteMode: boolean
 }
 
 export type LibrarySnapshot = {

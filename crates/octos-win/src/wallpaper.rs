@@ -70,6 +70,10 @@ struct MonitorSlot {
     applied_visible: Option<bool>,
     /// Last client size passed to the WebView controller.
     applied_client: Option<(i32, i32)>,
+    /// When the wallpaper became hidden; MemorySaver waits a few seconds before
+    /// suspending so quick show/hide cycles do not thrash WebView2.
+    hidden_since: Option<Instant>,
+    suspended: bool,
 }
 
 impl MonitorSlot {
@@ -89,6 +93,8 @@ impl MonitorSlot {
             recreate_after: None,
             applied_visible: None,
             applied_client: None,
+            hidden_since: None,
+            suspended: false,
         }
     }
 
@@ -100,6 +106,8 @@ impl MonitorSlot {
         self.recreate_after = None;
         self.applied_visible = None;
         self.applied_client = None;
+        self.hidden_since = None;
+        self.suspended = false;
     }
 
     fn close(&mut self) {
@@ -130,6 +138,7 @@ struct WallpaperState {
     last_foreground: HWND,
     last_fullscreen_check: Instant,
     last_overlay_check: Instant,
+    memory_saver: bool,
 }
 
 impl Default for WallpaperState {
@@ -149,6 +158,7 @@ impl Default for WallpaperState {
             last_foreground: HWND::default(),
             last_fullscreen_check: Instant::now(),
             last_overlay_check: Instant::now(),
+            memory_saver: true,
         }
     }
 }
@@ -275,6 +285,26 @@ pub fn open_dev_tools_all() -> usize {
 }
 
 /// Toggle the "pause on fullscreen" setting at runtime.
+pub fn set_memory_saver(enabled: bool) {
+    info!("memory saver set to {enabled}");
+    let _ = with_state(|state| {
+        state.memory_saver = enabled;
+        for slot in &mut state.slots {
+            if !enabled && slot.suspended {
+                if let Some(webview) = &slot.webview
+                    && let Err(err) = webview.resume()
+                {
+                    warn!("could not resume wallpaper {}: {err:?}", slot.device_name);
+                }
+                slot.suspended = false;
+            }
+            if enabled && slot.hidden_since.is_none() && slot.applied_visible == Some(false) {
+                slot.hidden_since = Some(Instant::now());
+            }
+        }
+    });
+}
+
 pub fn set_fps_cap(fps: u32) {
     let script = octos_core::frame_cap::set_script(fps);
     let _ = with_state(|state| {
@@ -672,7 +702,7 @@ impl WallpaperState {
         // z-order sibling actually changed.
         let mut current = RECT::default();
         let geometry_ok = unsafe { GetWindowRect(hwnd, &mut current) }.is_ok() && current == rect;
-        let z_ok = insert_after.map_or(true, |expected| z_order_below(hwnd, expected));
+        let z_ok = insert_after.is_none_or(|expected| z_order_below(hwnd, expected));
         if !geometry_ok || !z_ok {
             debug!(
                 "repositioning wallpaper for {} (geometry_ok={geometry_ok}, z_ok={z_ok})",
@@ -839,6 +869,21 @@ impl WallpaperState {
                 "applying wallpaper visibility {visible} for {}",
                 slot.device_name
             );
+            if visible {
+                slot.hidden_since = None;
+                if slot.suspended
+                    && let Some(webview) = &slot.webview
+                {
+                    if let Err(err) = webview.resume() {
+                        warn!("could not resume wallpaper {}: {err:?}", slot.device_name);
+                    } else {
+                        info!("resumed wallpaper {}", slot.device_name);
+                    }
+                    slot.suspended = false;
+                }
+            } else {
+                slot.hidden_since = Some(Instant::now());
+            }
             let mut applied = true;
             if let Some(webview) = &slot.webview
                 && let Err(err) = webview.set_visible(visible)
@@ -854,6 +899,38 @@ impl WallpaperState {
             }
             if applied {
                 slot.applied_visible = Some(visible);
+            }
+        }
+    }
+
+    fn update_suspension(&mut self) {
+        if !self.memory_saver {
+            return;
+        }
+        let now = Instant::now();
+        for slot in &mut self.slots {
+            if slot.suspended || slot.applied_visible != Some(false) || slot.webview.is_none() {
+                continue;
+            }
+            let Some(since) = slot.hidden_since else {
+                slot.hidden_since = Some(now);
+                continue;
+            };
+            if now.duration_since(since) < Duration::from_secs(3) {
+                continue;
+            }
+            let Some(webview) = &slot.webview else {
+                continue;
+            };
+            match webview.try_suspend(&slot.device_name) {
+                Ok(()) => {
+                    slot.suspended = true;
+                    info!("suspending hidden wallpaper {}", slot.device_name);
+                }
+                Err(err) => warn!(
+                    "could not suspend hidden wallpaper {}: {err:?}",
+                    slot.device_name
+                ),
             }
         }
     }
@@ -913,6 +990,7 @@ unsafe extern "system" fn watchdog_timer(_hwnd: HWND, _message: u32, _id: usize,
             state.last_overlay_check = now;
             state.make_chrome_overlays_click_through();
         }
+        state.update_suspension();
     });
 }
 
@@ -1123,13 +1201,13 @@ fn position_wallpaper(
         };
         SetWindowPos(hwnd, insert_after, x, y, width, height, flags)?;
 
-        if let Some(expected) = insert_after {
-            if !z_order_below(hwnd, expected) {
-                debug!(
-                    "wallpaper z-order mismatch for {hwnd:?}, expected below {expected:?}; reinserting"
-                );
-                SetWindowPos(hwnd, Some(expected), x, y, width, height, SWP_NOACTIVATE)?;
-            }
+        if let Some(expected) = insert_after
+            && !z_order_below(hwnd, expected)
+        {
+            debug!(
+                "wallpaper z-order mismatch for {hwnd:?}, expected below {expected:?}; reinserting"
+            );
+            SetWindowPos(hwnd, Some(expected), x, y, width, height, SWP_NOACTIVATE)?;
         }
     }
     Ok(())

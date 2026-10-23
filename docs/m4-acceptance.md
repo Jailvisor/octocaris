@@ -65,7 +65,15 @@ prefs 兼容性：
 5. **通知 / memorySaver / 真实媒体**：按计划分别在 M8 / M6。
 6. **全屏暂停行为**：只验证了设置读写；真实游戏全屏回归仍是 M2/M5 缺口。
 
-## 6. UI / UX 实测（Win11 Fluent）
+## 6. 后续更新（M5 / 性能轮）
+
+- 测试数量在 M5/性能改动后增至 **protocol 11 / core 35 / storage 25（共 71）**；`cargo clippy --workspace --target x86_64-pc-windows-msvc -- -D warnings` 通过。
+- `appOptions` 现在类型化 `runOnStartup`、`enableGPU`、`pauseFullscreen`、`maxFps`、`memorySaver`、`liteMode`；其余未知键仍原样保留。
+- prefs 已按 M5 硬化：250ms debounce、退出 flush、`.bak`、`ReplaceFileW`；损坏隔离不变。
+- 全屏暂停、ProcessFailed、Explorer 重启、双屏/热插拔/redirect 已在 `docs/m5-hardening.md`、`docs/multimonitor.md` 实机验证。
+- MemorySaver/轻量模式见 `docs/performance.md`；轻量模式不改变壁纸帧率。
+
+## 7. UI / UX 实测（Win11 Fluent）
 
 | 项 | 结果 | 证据 |
 |---|---|---|

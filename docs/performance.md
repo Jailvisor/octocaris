@@ -36,6 +36,34 @@
 - 全屏应用遮挡时 `SetIsVisible(false)`，L2D 动画停止，CPU 从 52% 降到 13%。
 - 这部分不是本轮新增，但它是当前最大的省电项。
 
+### 4. MemorySaver 与轻量模式（2026-10-23）
+
+**MemorySaver（默认开）**
+
+- 壁纸因全屏/隐藏而 `SetIsVisible(false)` 超过 **3 秒**后，对该显示器调用 WebView2 `TrySuspend`；重新显示时先 `Resume` 再 `SetIsVisible(true)`。
+- 快速显示/隐藏不会立刻挂起，避免来回切换时反复销毁/重建渲染状态。
+- 主窗口关闭到托盘时也会挂起主 UI 的 WebView；从托盘恢复时 `Resume`。
+- 启动时应用 `appOptions.memorySaver`；`liteMode` 开启时强制为开。
+
+**轻量模式（`liteMode`）**
+
+- 只做两件事：简化 React UI（不加载卡片缩略图、关闭动效/模糊、隐藏状态面板）+ 打开 MemorySaver。
+- **不改变壁纸帧率**；帧率仍是独立的 `maxFps` 设置（实测切到轻量模式后仍为 30 FPS）。
+- 轻量模式开启时“内存节省”开关强制为开并禁用，避免 UI 显示关、运行时却挂起的不一致。
+- 关闭轻量模式不会自动关闭内存节省；内存节省可以单独关。
+
+**实测（L2D 4K，DISPLAY2 2880×1800 @ 200%）**
+
+用 7 秒全屏窗口触发隐藏，采样 `octos.exe` + 其 `msedgewebview2.exe` 子进程的 WorkingSet：
+
+| 状态 | 内存 |
+|---|---:|
+| 壁纸可见 | 1098 MB |
+| 全屏隐藏、挂起后 | 1013 MB |
+| 退出全屏、恢复后 | 1054 MB |
+
+日志证据：`fullscreen=true` → 3 秒后 `suspending hidden wallpaper` → `fullscreen=false` 后立即 `resumed wallpaper`（07:59:04Z / 07:59:07Z / 07:59:11Z）。这次只隐藏了 7 秒，释放量有限；更长的锁屏/全屏停留会释放更多。
+
 ## 如何选择
 
 - **最轻量**：静态图片壁纸（`添加图片`），约 14% 单核。
@@ -45,7 +73,6 @@
 
 ## 后续可做
 
-1. 主窗口隐藏到托盘时暂停/挂起主 UI WebView，降低 13% 的宿主/合成基线。
-2. `MemorySaver`：壁纸隐藏超过 N 秒后 `TrySuspend`，释放 renderer/GPU 内存（需要处理 Resume 与快速显示/隐藏竞态）。
-3. 限制同时动画的壁纸数量/分辨率，或为 mod 提供质量档位。
-4. 若 L2D 是主要使用场景，优先建议 mod 使用 2K 资源而不是 4K/8K；宿主无法替 mod 降资源。
+1. 限制同时动画的壁纸数量/分辨率，或为 mod 提供质量档位。
+2. 若 L2D 是主要使用场景，优先建议 mod 使用 2K 资源而不是 4K/8K；宿主无法替 mod 降资源。
+3. 在 15/30 FPS + MemorySaver 组合下做更长时间（锁屏/全屏 30 分钟）的内存曲线，确认 renderer 真正回收。

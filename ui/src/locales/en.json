@@ -91,6 +91,10 @@
       "title": "Wallpaper frame rate",
       "desc": "Cap animation frame rate to save CPU and GPU. Applies immediately.",
       "unlimited": "Unlimited"
+    },
+    "liteMode": {
+      "title": "Lite mode",
+      "desc": "Simplify the UI (no thumbnails or animation effects) and suspend hidden wallpapers. Wallpaper FPS is unchanged."
     }
   },
   "bridge": {

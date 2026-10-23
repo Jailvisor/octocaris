@@ -466,6 +466,11 @@ fn run(paths: Paths) -> Result<()> {
                         startup_preferences.app_options.pause_fullscreen,
                     );
                     octos_win::wallpaper::set_fps_cap(startup_preferences.app_options.max_fps);
+                    // Lite mode implies MemorySaver; honour a persisted opt-out otherwise.
+                    octos_win::wallpaper::set_memory_saver(
+                        startup_preferences.app_options.memory_saver
+                            || startup_preferences.app_options.lite_mode,
+                    );
                     apply_startup_preferences(
                         &startup_preferences,
                         &wallpaper_key,
@@ -562,6 +567,8 @@ fn settings_snapshot() -> serde_json::Value {
         "enableGpu": options.map(|options| options.enable_gpu).unwrap_or(true),
         "pauseFullscreen": options.map(|options| options.pause_fullscreen).unwrap_or(true),
         "maxFps": options.map(|options| options.max_fps).unwrap_or(30),
+        "memorySaver": options.map(|options| options.memory_saver).unwrap_or(true),
+        "liteMode": options.map(|options| options.lite_mode).unwrap_or(false),
     })
 }
 
@@ -604,6 +611,27 @@ fn apply_setting(paths: &Paths, key: &str, value: &serde_json::Value) -> Result<
                 preferences.app_options.max_fps = fps;
                 octos_win::wallpaper::set_fps_cap(fps);
                 info!("wallpaper frame cap set to {fps} (0 = unlimited)");
+            }
+            "memorySaver" => {
+                let enabled = boolean(key)?;
+                if !enabled && preferences.app_options.lite_mode {
+                    return Err(anyhow!("disable lite mode before disabling memory saver"));
+                }
+                preferences.app_options.memory_saver = enabled;
+                octos_win::wallpaper::set_memory_saver(enabled);
+                info!("memory saver set to {enabled}");
+            }
+            "liteMode" => {
+                let enabled = boolean(key)?;
+                preferences.app_options.lite_mode = enabled;
+                if enabled {
+                    // Lite mode simplifies the React UI (no thumbnails/animation
+                    // effects) and turns on MemorySaver. It must not change the
+                    // wallpaper frame rate: that stays a separate setting.
+                    preferences.app_options.memory_saver = true;
+                    octos_win::wallpaper::set_memory_saver(true);
+                }
+                info!("lite mode set to {enabled} (UI simplified; wallpaper fps unchanged)");
             }
             other => return Err(anyhow!("unknown setting: {other}")),
         }

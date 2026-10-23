@@ -1030,6 +1030,11 @@ h1 {
   transform: translateX(20px);
 }
 
+.switch.interactive:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
 /* ---------- Skeleton / spinner ---------- */
 
 .skeleton {
@@ -1359,4 +1364,34 @@ h1 {
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
   }
+}
+
+/* ---------- Lite mode: fewer front-end effects, not lower wallpaper FPS ---------- */
+
+.app.lite {
+  background: var(--bg);
+}
+
+.app.lite .sidebar,
+.app.lite .panel,
+.app.lite .mod-card {
+  backdrop-filter: none;
+  box-shadow: none;
+  background: #1b1b1f;
+}
+
+.app.lite .mod-card-art {
+  background: var(--panel-solid);
+}
+
+.app.lite .mod-card:hover {
+  transform: none;
+  box-shadow: none;
+}
+
+.app.lite *,
+.app.lite *::before,
+.app.lite *::after {
+  animation: none !important;
+  transition: none !important;
 }

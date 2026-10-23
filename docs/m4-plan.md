@@ -27,12 +27,13 @@
 - [x] Settings 实装：开机启动（HKCU Run）、全屏暂停（立即生效）、硬件加速（重启生效）三个真实开关；`允许通知` 按用户决定不做，保留 M8 占位。
 - [x] UI 细节（Win11 Fluent）：Mica 风格分层背景、Segoe UI Variable、4/8px 控件几何、焦点环、细滚动条、减少动效；卡片图片懒加载/淡入/失败占位；Library 骨架屏与空态；安装中 spinner + 成功/错误 InfoBar 式 toast；方向键在卡片间移动并按焦点切换详情；默认选中当前正在使用的壁纸。
 - [x] 窗口位置恢复：保存 `WINDOWPLACEMENT.rcNormalPosition` 到 prefs 的 `window`，退出时落盘，启动时校验显示器后恢复；最大化时保留还原尺寸。
+- [x] 轻量模式 + MemorySaver：轻量模式简化 UI（缩略图/动效/状态面板）并强制开启 MemorySaver，不改变壁纸帧率；隐藏壁纸 3 秒后 `TrySuspend`、显示时 `Resume`；主窗口隐藏到托盘时挂起主 UI。启动时应用持久化的 `memorySaver`，修复了 opt-out 重启失效。实测 1098 MB → 1013 MB → 1054 MB（L2D 7 秒全屏）。
 
 ## 下一步
 
 1. **多显示器回归**：按显示器选择、`redirect`、热插拔（当前环境只有 DISPLAY1）。
 2. **M5 硬化**：prefs 写盘 debounce/.bak、全屏真实游戏回归、ProcessFailed 恢复。
-3. `允许通知` 推迟到 M8；`memorySaver` 留在 M6。
+3. `允许通知` 推迟到 M8；MemorySaver/轻量模式已完成，帧率仍是独立设置。
 4. 用真实社区 mod 做多显示器/选项回归。
 
 ## 验收

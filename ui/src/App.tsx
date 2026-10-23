@@ -410,12 +410,14 @@ function ModCardTile({
   index,
   selected,
   tabbable,
+  lite,
   onSelect,
 }: {
   card: ModCard
   index: number
   selected: boolean
   tabbable: boolean
+  lite: boolean
   onSelect: (path: string) => void
 }) {
   const { t } = useTranslation()
@@ -440,7 +442,7 @@ function ModCardTile({
       onFocus={() => onSelect(card.folder_path)}
     >
       <div className="mod-card-art">
-        {card.image_url && imageState !== 'error' && (
+        {!lite && card.image_url && imageState !== 'error' && (
           <img
             src={card.image_url}
             alt=""
@@ -451,7 +453,7 @@ function ModCardTile({
             onError={() => setImageState('error')}
           />
         )}
-        {imageState !== 'ready' && (
+        {(lite || imageState !== 'ready') && (
           <span className="mod-card-initial" aria-hidden="true">
             {card.name.slice(0, 1).toUpperCase()}
           </span>
@@ -473,10 +475,12 @@ function ModCardTile({
 function ModGrid({
   mods,
   selectedPath,
+  lite,
   onSelect,
 }: {
   mods: ModCard[]
   selectedPath: string | null
+  lite: boolean
   onSelect: (path: string) => void
 }) {
   const { t } = useTranslation()
@@ -526,6 +530,7 @@ function ModGrid({
           card={card}
           index={index}
           selected={card.folder_path === selectedPath}
+          lite={lite}
           tabbable={
             card.folder_path === selectedPath || (!selectedPath && index === 0)
           }
@@ -567,10 +572,12 @@ function DetailSkeleton() {
 function SettingSwitch({
   checked,
   label,
+  disabled = false,
   onChange,
 }: {
   checked: boolean
   label: string
+  disabled?: boolean
   onChange: (value: boolean) => void
 }) {
   return (
@@ -578,8 +585,14 @@ function SettingSwitch({
       className={checked ? 'switch interactive active' : 'switch interactive'}
       role="switch"
       aria-checked={checked}
+      aria-disabled={disabled}
       aria-label={label}
-      onClick={() => onChange(!checked)}
+      disabled={disabled}
+      onClick={() => {
+        if (!disabled) {
+          onChange(!checked)
+        }
+      }}
     >
       <span />
     </button>
@@ -601,7 +614,6 @@ function SettingsView({
   const language: AppLanguage = i18n.language.toLowerCase().startsWith('zh') ? 'zh-CN' : 'en'
   const pendingRows: Array<[string, string, string]> = [
     [t('settings.allowNotifications.title'), t('settings.allowNotifications.desc'), 'M8'],
-    [t('settings.memorySaver.title'), t('settings.memorySaver.desc'), 'M6'],
   ]
 
   return (
@@ -672,6 +684,35 @@ function SettingsView({
       </div>
       <div className="setting-row">
         <div>
+          <h3>{t('settings.liteMode.title')}</h3>
+          <p>{t('settings.liteMode.desc')}</p>
+        </div>
+        <div className="setting-tail">
+          <span className="badge">M5</span>
+          <SettingSwitch
+            checked={settings.liteMode}
+            label={t('settings.liteMode.title')}
+            onChange={(value) => onSetSetting('liteMode', value)}
+          />
+        </div>
+      </div>
+      <div className="setting-row">
+        <div>
+          <h3>{t('settings.memorySaver.title')}</h3>
+          <p>{t('settings.memorySaver.desc')}</p>
+        </div>
+        <div className="setting-tail">
+          <span className="badge">M5</span>
+          <SettingSwitch
+            checked={settings.memorySaver || settings.liteMode}
+            label={t('settings.memorySaver.title')}
+            disabled={settings.liteMode}
+            onChange={(value) => onSetSetting('memorySaver', value)}
+          />
+        </div>
+      </div>
+      <div className="setting-row">
+        <div>
           <h3>{t('settings.maxFps.title')}</h3>
           <p>{t('settings.maxFps.desc')}</p>
         </div>
@@ -734,6 +775,8 @@ export default function App() {
     enableGpu: true,
     pauseFullscreen: true,
     maxFps: 30,
+    memorySaver: true,
+    liteMode: false,
   })
   const [library, setLibrary] = useState<LibrarySnapshot | null>(null)
   const [selectedModPath, setSelectedModPath] = useState<string | null>(null)
@@ -957,7 +1000,7 @@ export default function App() {
   const loadingLibrary = isHosted() && library === null
 
   return (
-    <div className="app">
+    <div className={settings.liteMode ? 'app lite' : 'app'}>
       <aside className="sidebar">
         <div className="brand">
           <div className="brand-mark">O</div>
@@ -1082,6 +1125,7 @@ export default function App() {
                   <ModGrid
                     mods={library.mods}
                     selectedPath={selectedModPath}
+                    lite={settings.liteMode}
                     onSelect={setSelectedModPath}
                   />
                   <div className="mod-detail-stack">
@@ -1106,11 +1150,13 @@ export default function App() {
                     {library.errors.length > 0 && (
                       <p className="warn-text">{library.errors.join(' · ')}</p>
                     )}
-                    <StatusCard
-                      state={hostState}
-                      version={version}
-                      wallpaperActive={wallpaperActive}
-                    />
+                    {!settings.liteMode && (
+                      <StatusCard
+                        state={hostState}
+                        version={version}
+                        wallpaperActive={wallpaperActive}
+                      />
+                    )}
                   </div>
                 </>
               ) : (
@@ -1124,11 +1170,13 @@ export default function App() {
                     onImport={installFolder}
                     onAddImage={installImage}
                   />
-                  <StatusCard
-                    state={hostState}
-                    version={version}
-                    wallpaperActive={wallpaperActive}
-                  />
+                  {!settings.liteMode && (
+                    <StatusCard
+                      state={hostState}
+                      version={version}
+                      wallpaperActive={wallpaperActive}
+                    />
+                  )}
                 </>
               )}
             </section>
