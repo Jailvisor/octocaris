@@ -50,7 +50,8 @@ pub fn create_environment(
     let mut arguments = String::from(
         "--disable-features=TranslateUI,AudioServiceOutOfProcess,LowIntegrityMode \
          --no-first-run --no-default-browser-check --disable-breakpad \
-         --disable-component-update --disable-background-networking",
+         --disable-component-update --disable-background-networking \
+         --autoplay-policy=no-user-gesture-required",
     );
     if !enable_gpu {
         arguments.push_str(" --disable-gpu");

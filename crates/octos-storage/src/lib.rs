@@ -53,19 +53,26 @@ pub struct Paths {
 
 impl Paths {
     pub fn discover() -> Result<Self, PathsError> {
-        let root = match std::env::var_os("OCTOS_DATA_DIR") {
-            Some(value) if !value.is_empty() => PathBuf::from(value),
-            _ => {
-                let local_app_data =
-                    std::env::var_os("LOCALAPPDATA").ok_or(PathsError::NoDataDir)?;
-                PathBuf::from(local_app_data).join("Octos")
-            }
-        };
-
         let exe = std::env::current_exe()?;
         let exe_dir = exe.parent().map(Path::to_path_buf).ok_or_else(|| {
             PathsError::NoExeDir(std::io::Error::other("executable has no parent"))
         })?;
+
+        let root = match std::env::var_os("OCTOS_DATA_DIR") {
+            Some(value) if !value.is_empty() => PathBuf::from(value),
+            _ => {
+                // Portable layout: <exe>\data\wallpapers. This keeps a
+                // self-contained copy working when launched by double-click.
+                let portable = exe_dir.join("data");
+                if portable.join("wallpapers").is_dir() {
+                    portable
+                } else {
+                    let local_app_data =
+                        std::env::var_os("LOCALAPPDATA").ok_or(PathsError::NoDataDir)?;
+                    PathBuf::from(local_app_data).join("Octos")
+                }
+            }
+        };
 
         let paths = Self {
             wallpapers: root.join("wallpapers"),
