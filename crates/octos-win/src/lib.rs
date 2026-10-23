@@ -23,21 +23,22 @@ use windows::Win32::Foundation::{
     CloseHandle, ERROR_ALREADY_EXISTS, GetLastError, HANDLE, HLOCAL, HWND, LPARAM, LRESULT,
     LocalFree, POINT, RECT, WPARAM,
 };
+use windows::Win32::Graphics::Dwm::{DWMWA_USE_IMMERSIVE_DARK_MODE, DwmSetWindowAttribute};
 use windows::Win32::Graphics::Gdi::{
     GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITOR_DEFAULTTONULL, MONITORINFO, MonitorFromRect,
     MonitorFromWindow,
 };
 use windows::Win32::System::DataExchange::COPYDATASTRUCT;
 use windows::Win32::System::Environment::GetCommandLineW;
-use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+use windows::Win32::System::LibraryLoader::{GetModuleHandleW, GetProcAddress};
 use windows::Win32::System::Threading::CreateMutexW;
 use windows::Win32::UI::HiDpi::GetDpiForWindow;
 use windows::Win32::UI::Shell::{
     CommandLineToArgvW, DragAcceptFiles, DragFinish, DragQueryFileW, HDROP, NIF_ICON, NIF_MESSAGE,
-    NIF_TIP, NIM_ADD, NIM_DELETE, NOTIFYICONDATAW, Shell_NotifyIconW,
+    NIF_TIP, NIM_ADD, NIM_DELETE, NIM_MODIFY, NOTIFYICONDATAW, Shell_NotifyIconW,
 };
 use windows::Win32::UI::WindowsAndMessaging::*;
-use windows::core::{Interface, PCWSTR, w};
+use windows::core::{BOOL, Interface, PCSTR, PCWSTR, w};
 
 pub mod desktop_icons;
 pub mod startup;
@@ -52,7 +53,6 @@ const TRAY_ID: u32 = 1;
 const MENU_OPEN: usize = 1;
 const MENU_QUIT: usize = 2;
 const MENU_LITE: usize = 3;
-const TRAY_TIP: &str = "Octos";
 
 /// One-shot timer that opens DevTools after the wallpaper controllers exist.
 const DEVTOOLS_TIMER_ID: usize = 3;
@@ -239,6 +239,47 @@ pub fn restore_existing_instance() -> bool {
     false
 }
 
+/// Opt into the system dark-mode menu theme. The uxtheme entry points are
+/// documented only by ordinal, but are stable across Windows 10/11 builds.
+fn enable_dark_menus() {
+    unsafe {
+        let Ok(uxtheme) = GetModuleHandleW(w!("uxtheme.dll")) else {
+            return;
+        };
+        if let Some(set_preferred) = GetProcAddress(uxtheme, PCSTR(135 as *const u8)) {
+            let set_preferred: unsafe extern "system" fn(i32) -> i32 =
+                std::mem::transmute(set_preferred);
+            let _ = set_preferred(1); // AllowDark: follow the system preference.
+        }
+        flush_menu_themes();
+    }
+}
+
+fn flush_menu_themes() {
+    unsafe {
+        let Ok(uxtheme) = GetModuleHandleW(w!("uxtheme.dll")) else {
+            return;
+        };
+        if let Some(flush) = GetProcAddress(uxtheme, PCSTR(136 as *const u8)) {
+            let flush: unsafe extern "system" fn() = std::mem::transmute(flush);
+            flush();
+        }
+    }
+}
+
+fn apply_title_bar_theme(hwnd: HWND) {
+    let dark = BOOL::from(!wallpaper::system_theme_is_light());
+    unsafe {
+        let _ = DwmSetWindowAttribute(
+            hwnd,
+            DWMWA_USE_IMMERSIVE_DARK_MODE,
+            &dark as *const BOOL as *const core::ffi::c_void,
+            size_of::<BOOL>() as u32,
+        );
+    }
+    flush_menu_themes();
+}
+
 pub fn create_main_window(saved: Option<WindowPlacement>) -> Result<HWND> {
     unsafe {
         let hinstance = GetModuleHandleW(None)?;
@@ -279,6 +320,8 @@ pub fn create_main_window(saved: Option<WindowPlacement>) -> Result<HWND> {
         )?;
 
         DragAcceptFiles(hwnd, true);
+        enable_dark_menus();
+        apply_title_bar_theme(hwnd);
 
         let saved_rect = saved.and_then(|placement| {
             if placement.width < 320 || placement.height < 240 {
@@ -422,12 +465,6 @@ pub fn set_lite_mode_handler(handler: impl Fn(bool) + 'static) {
     with_state(|state| state.lite_mode_handler = Some(Rc::new(handler)));
 }
 
-/// Set the initial Lite mode state without closing the UI (used at startup so
-/// launching Octos always shows the window).
-pub fn set_lite_mode_flag(enabled: bool) {
-    with_state(|state| state.lite_mode = enabled);
-}
-
 pub fn lite_mode() -> bool {
     with_state(|state| state.lite_mode)
 }
@@ -488,6 +525,7 @@ fn apply_lite_mode(hwnd: HWND, enabled: bool) {
     } else {
         restore_main_window();
     }
+    update_tray_icon(hwnd);
 }
 
 /// Pause/resume the main React UI when the window is hidden to the tray or
@@ -560,8 +598,11 @@ pub fn restore_main_window() {
     };
 
     if let Some(hwnd) = hwnd {
+        // Opening the frontend leaves Lite mode; it is a per-session action.
+        with_state(|state| state.lite_mode = false);
         ensure_frontend();
         set_main_webview_active(true);
+        update_tray_icon(hwnd);
         unsafe {
             let _ = ShowWindow(hwnd, SW_SHOW);
             let _ = SetForegroundWindow(hwnd);
@@ -605,6 +646,25 @@ pub fn run_message_loop() {
     }
 }
 
+fn tray_tip() -> &'static str {
+    if lite_mode() {
+        "Octos · 轻量模式"
+    } else {
+        "Octos"
+    }
+}
+
+fn update_tray_icon(hwnd: HWND) {
+    if !with_state(|state| state.tray_added) {
+        return;
+    }
+    if let Ok(data) = tray_icon_data(hwnd) {
+        unsafe {
+            let _ = Shell_NotifyIconW(NIM_MODIFY, &data);
+        }
+    }
+}
+
 fn tray_icon_data(hwnd: HWND) -> Result<NOTIFYICONDATAW> {
     let mut data = NOTIFYICONDATAW {
         cbSize: size_of::<NOTIFYICONDATAW>() as u32,
@@ -616,7 +676,7 @@ fn tray_icon_data(hwnd: HWND) -> Result<NOTIFYICONDATAW> {
         ..Default::default()
     };
 
-    let tip: Vec<u16> = TRAY_TIP.encode_utf16().collect();
+    let tip: Vec<u16> = tray_tip().encode_utf16().collect();
     let count = tip.len().min(data.szTip.len() - 1);
     data.szTip[..count].copy_from_slice(&tip[..count]);
     Ok(data)
@@ -632,14 +692,16 @@ fn show_tray_menu(hwnd: HWND) {
             }
         };
 
-        let _ = AppendMenuW(menu, MF_STRING, MENU_OPEN, w!("Open Octos"));
+        let _ = AppendMenuW(menu, MF_STRING, MENU_OPEN, w!("打开 Octos"));
+        let _ = AppendMenuW(menu, MF_SEPARATOR, 0, w!(""));
         let lite_flags = if lite_mode() {
             MF_STRING | MF_CHECKED
         } else {
             MF_STRING | MF_UNCHECKED
         };
         let _ = AppendMenuW(menu, lite_flags, MENU_LITE, w!("轻量模式"));
-        let _ = AppendMenuW(menu, MF_STRING, MENU_QUIT, w!("Quit"));
+        let _ = AppendMenuW(menu, MF_SEPARATOR, 0, w!(""));
+        let _ = AppendMenuW(menu, MF_STRING, MENU_QUIT, w!("退出"));
 
         let mut point = POINT::default();
         let _ = GetCursorPos(&mut point);
@@ -775,6 +837,10 @@ unsafe extern "system" fn wndproc(
         }
         WM_APP_LITE_MODE => {
             apply_lite_mode(hwnd, wparam.0 != 0);
+            LRESULT(0)
+        }
+        WM_SETTINGCHANGE | WM_THEMECHANGED => {
+            apply_title_bar_theme(hwnd);
             LRESULT(0)
         }
         WM_DROPFILES => {

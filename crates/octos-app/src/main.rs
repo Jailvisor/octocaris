@@ -86,7 +86,9 @@ fn run(paths: Paths) -> Result<()> {
     let args = octos_win::split_command_line(&octos_win::current_command_line());
     let startup_command = cli::parse(args.get(1..).unwrap_or(&[]));
 
-    let preferences = octos_storage::load_preferences(&paths.preferences);
+    let mut preferences = octos_storage::load_preferences(&paths.preferences);
+    // Lite mode is a per-session tray action now, not a persisted setting.
+    let had_lite_mode = preferences.app_options.extra.remove("liteMode").is_some();
     let saved_window: Option<WindowPlacement> = preferences.window;
     info!(
         "preferences loaded: {} monitor selection(s)",
@@ -95,6 +97,11 @@ fn run(paths: Paths) -> Result<()> {
     *PREFERENCES
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(preferences.clone());
+    if had_lite_mode
+        && let Err(err) = octos_storage::save_preferences(&paths.preferences, &preferences)
+    {
+        warn!("could not remove the stale liteMode preference: {err}");
+    }
     *PREFS_WRITER
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner()) =
@@ -111,13 +118,6 @@ fn run(paths: Paths) -> Result<()> {
     let _com = ComGuard;
 
     let hwnd = octos_win::create_main_window(saved_window)?;
-    octos_win::set_lite_mode_flag(
-        PREFERENCES
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .as_ref()
-            .is_some_and(|preferences| preferences.app_options.lite_mode),
-    );
     octos_win::add_tray_icon(hwnd).context("could not add tray icon")?;
 
     octos_win::set_window_placement_handler(|placement| {
@@ -142,18 +142,15 @@ fn run(paths: Paths) -> Result<()> {
     });
     let lite_paths = paths.clone();
     octos_win::set_lite_mode_handler(move |enabled| {
-        if let Some(preferences) = PREFERENCES
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .as_mut()
-        {
-            preferences.app_options.lite_mode = enabled;
-            if enabled {
+        if enabled {
+            if let Some(preferences) = PREFERENCES
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .as_mut()
+            {
                 preferences.app_options.pause_fullscreen = true;
                 preferences.app_options.memory_saver = true;
             }
-        }
-        if enabled {
             octos_win::wallpaper::set_pause_fullscreen(true);
             octos_win::set_memory_saver(true);
         }
@@ -549,10 +546,7 @@ fn run(paths: Paths) -> Result<()> {
                     );
                     octos_win::wallpaper::set_fps_cap(startup_preferences.app_options.max_fps);
                     // Lite mode implies MemorySaver; honour a persisted opt-out otherwise.
-                    octos_win::set_memory_saver(
-                        startup_preferences.app_options.memory_saver
-                            || startup_preferences.app_options.lite_mode,
-                    );
+                    octos_win::set_memory_saver(startup_preferences.app_options.memory_saver);
                     apply_startup_preferences(
                         &startup_preferences,
                         &wallpaper_key,
@@ -650,7 +644,6 @@ fn settings_snapshot() -> serde_json::Value {
         "pauseFullscreen": options.map(|options| options.pause_fullscreen).unwrap_or(true),
         "maxFps": options.map(|options| options.max_fps).unwrap_or(30),
         "memorySaver": options.map(|options| options.memory_saver).unwrap_or(true),
-        "liteMode": options.map(|options| options.lite_mode).unwrap_or(false),
     })
 }
 
@@ -681,11 +674,6 @@ fn apply_setting(paths: &Paths, key: &str, value: &serde_json::Value) -> Result<
             }
             "pauseFullscreen" => {
                 let enabled = boolean(key)?;
-                if !enabled && preferences.app_options.lite_mode {
-                    return Err(anyhow!(
-                        "disable lite mode before disabling fullscreen pause"
-                    ));
-                }
                 preferences.app_options.pause_fullscreen = enabled;
                 octos_win::wallpaper::set_pause_fullscreen(enabled);
                 info!("pause on fullscreen set to {enabled}");
@@ -701,27 +689,8 @@ fn apply_setting(paths: &Paths, key: &str, value: &serde_json::Value) -> Result<
             }
             "memorySaver" => {
                 let enabled = boolean(key)?;
-                if !enabled && preferences.app_options.lite_mode {
-                    return Err(anyhow!("disable lite mode before disabling memory saver"));
-                }
                 preferences.app_options.memory_saver = enabled;
                 octos_win::set_memory_saver(enabled);
-            }
-            "liteMode" => {
-                let enabled = boolean(key)?;
-                preferences.app_options.lite_mode = enabled;
-                if enabled {
-                    // Lite mode simplifies the React UI (no thumbnails/animation
-                    // effects), pauses wallpapers on fullscreen and suspends the
-                    // main UI when hidden in the tray. Wallpaper FPS stays a
-                    // separate setting.
-                    preferences.app_options.pause_fullscreen = true;
-                    preferences.app_options.memory_saver = true;
-                    octos_win::wallpaper::set_pause_fullscreen(true);
-                    octos_win::set_memory_saver(true);
-                }
-                info!("lite mode set to {enabled} (UI simplified; fps unchanged)");
-                octos_win::set_lite_mode(enabled);
             }
             other => return Err(anyhow!("unknown setting: {other}")),
         }

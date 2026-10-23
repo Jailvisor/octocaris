@@ -1,7 +1,7 @@
 /* Windows 11 Fluent (dark) — materials, quiet strokes, 4/8px geometry. */
 
 :root {
-  color-scheme: dark;
+  color-scheme: light dark;
   --bg: #1a1a1e;
   --bg-deep: #141417;
   --sidebar: rgba(23, 23, 27, 0.72);
@@ -1393,32 +1393,182 @@ h1 {
   }
 }
 
-/* ---------- Lite mode: fewer front-end effects, not lower wallpaper FPS ---------- */
 
-.app.lite {
-  background: var(--bg);
-}
+/* ---------- Light theme (follows the Windows app theme automatically) ---------- */
 
-.app.lite .sidebar,
-.app.lite .panel,
-.app.lite .mod-card {
-  backdrop-filter: none;
-  box-shadow: none;
-  background: #1b1b1f;
-}
+@media (prefers-color-scheme: light) {
+  :root {
+    color-scheme: light;
+    --bg: #f4f4f6;
+    --bg-deep: #ececef;
+    --sidebar: rgba(250, 250, 252, 0.8);
+    --panel: rgba(255, 255, 255, 0.72);
+    --panel-hover: rgba(255, 255, 255, 0.94);
+    --panel-solid: #ffffff;
+    --panel-raised: rgba(0, 0, 0, 0.035);
+    --line: rgba(0, 0, 0, 0.08);
+    --line-strong: rgba(0, 0, 0, 0.16);
+    --text: #1b1b1f;
+    --muted: #4c4f57;
+    --faint: #6f727b;
+    --accent: #c8323a;
+    --accent-hover: #b02730;
+    --accent-soft: rgba(200, 50, 58, 0.12);
+    --green: #2f9e5b;
+    --amber: #b7791f;
+    --blue: #4f6fe0;
+    --shadow-panel: 0 1px 2px rgba(0, 0, 0, 0.05), 0 10px 30px rgba(0, 0, 0, 0.08);
+    --shadow-flyout: 0 16px 48px rgba(0, 0, 0, 0.16);
+  }
 
-.app.lite .mod-card-art {
-  background: var(--panel-solid);
-}
+  body {
+    background:
+      radial-gradient(1100px 700px at 12% -18%, rgba(200, 50, 58, 0.07), transparent 58%),
+      radial-gradient(900px 620px at 102% -6%, rgba(79, 111, 224, 0.06), transparent 58%),
+      linear-gradient(180deg, #fbfbfc 0%, var(--bg) 42%, var(--bg-deep) 100%);
+  }
 
-.app.lite .mod-card:hover {
-  transform: none;
-  box-shadow: none;
-}
+  * {
+    scrollbar-color: rgba(0, 0, 0, 0.22) transparent;
+  }
 
-.app.lite *,
-.app.lite *::before,
-.app.lite *::after {
-  animation: none !important;
-  transition: none !important;
+  *::-webkit-scrollbar-thumb,
+  main::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.22);
+    background-clip: content-box;
+  }
+
+  *::-webkit-scrollbar-thumb:hover,
+  main::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 0, 0, 0.34);
+    background-clip: content-box;
+  }
+
+  .nav-item:hover {
+    background: rgba(0, 0, 0, 0.05);
+  }
+
+  .nav-item.active {
+    background: rgba(0, 0, 0, 0.06);
+  }
+
+  .panel {
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.85), rgba(255, 255, 255, 0.55)),
+      var(--panel);
+  }
+
+  .button:hover:not(:disabled) {
+    border-color: rgba(0, 0, 0, 0.22);
+    background: rgba(0, 0, 0, 0.05);
+  }
+
+  .button.ghost:hover:not(:disabled) {
+    background: rgba(0, 0, 0, 0.05);
+  }
+
+  .language-select,
+  .apply-row select,
+  .option-row select,
+  .option-row input[type="text"],
+  .option-row input[type="number"] {
+    border-bottom-color: rgba(0, 0, 0, 0.22);
+    background-color: rgba(0, 0, 0, 0.03);
+  }
+
+  .language-select:hover,
+  .apply-row select:hover,
+  .option-row select:hover,
+  .option-row input[type="text"]:hover,
+  .option-row input[type="number"]:hover {
+    background-color: rgba(0, 0, 0, 0.05);
+  }
+
+  .language-select,
+  .apply-row select,
+  .option-row select {
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%234c4f57' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='m6 9 6 6 6-6'/></svg>");
+  }
+
+  .option-row input[type="range"] {
+    background: rgba(0, 0, 0, 0.16);
+  }
+
+  .option-row input[type="range"]::-webkit-slider-thumb {
+    border-color: rgba(0, 0, 0, 0.65);
+  }
+
+  .empty-state {
+    border-color: rgba(0, 0, 0, 0.12);
+  }
+
+  .empty-art span {
+    background:
+      linear-gradient(160deg, rgba(0, 0, 0, 0.06), rgba(0, 0, 0, 0.015)),
+      var(--panel-solid);
+  }
+
+  .mod-card {
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0.55)),
+      var(--panel);
+  }
+
+  .mod-card-art {
+    color: rgba(0, 0, 0, 0.55);
+  }
+
+  .monitor-chip,
+  .option-row,
+  .setting-row:hover {
+    background: rgba(0, 0, 0, 0.025);
+  }
+
+  .option-row:hover {
+    background: rgba(0, 0, 0, 0.045);
+  }
+
+  .switch {
+    border-color: rgba(0, 0, 0, 0.18);
+  }
+
+  .switch.interactive:hover {
+    border-color: rgba(0, 0, 0, 0.3);
+  }
+
+  .skeleton,
+  .skeleton-card .mod-card-art {
+    background: rgba(0, 0, 0, 0.055);
+  }
+
+  .skeleton::after,
+  .skeleton-card .mod-card-art::after {
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(0, 0, 0, 0.07),
+      transparent
+    );
+  }
+
+  .spinner {
+    border-color: rgba(0, 0, 0, 0.22);
+    border-top-color: var(--text);
+  }
+
+  .drop-overlay {
+    background: rgba(244, 244, 246, 0.7);
+  }
+
+  .drop-card {
+    background: rgba(255, 255, 255, 0.96);
+  }
+
+  .toast {
+    background: rgba(255, 255, 255, 0.97);
+  }
+
+  .toast-close:hover {
+    background: rgba(0, 0, 0, 0.06);
+  }
 }

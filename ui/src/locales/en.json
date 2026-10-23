@@ -65,7 +65,7 @@
     },
     "pauseFullscreen": {
       "title": "Pause on fullscreen",
-      "desc": "Stop rendering wallpapers when a game or video is fullscreen. Forced on in Lite mode."
+      "desc": "Stop rendering wallpapers when a game or video is fullscreen."
     },
     "enableGpu": {
       "title": "Hardware acceleration",
@@ -81,7 +81,7 @@
     },
     "memorySaver": {
       "title": "Memory saver",
-      "desc": "Suspend the Octos main UI when hidden in the tray; Lite mode closes the frontend entirely."
+      "desc": "Suspend the Octos main UI when hidden in the tray."
     },
     "language": {
       "title": "Language",

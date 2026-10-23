@@ -410,14 +410,12 @@ function ModCardTile({
   index,
   selected,
   tabbable,
-  lite,
   onSelect,
 }: {
   card: ModCard
   index: number
   selected: boolean
   tabbable: boolean
-  lite: boolean
   onSelect: (path: string) => void
 }) {
   const { t } = useTranslation()
@@ -442,7 +440,7 @@ function ModCardTile({
       onFocus={() => onSelect(card.folder_path)}
     >
       <div className="mod-card-art">
-        {!lite && card.image_url && imageState !== 'error' && (
+        {card.image_url && imageState !== 'error' && (
           <img
             src={card.image_url}
             alt=""
@@ -453,7 +451,7 @@ function ModCardTile({
             onError={() => setImageState('error')}
           />
         )}
-        {(lite || imageState !== 'ready') && (
+        {imageState !== 'ready' && (
           <span className="mod-card-initial" aria-hidden="true">
             {card.name.slice(0, 1).toUpperCase()}
           </span>
@@ -475,12 +473,10 @@ function ModCardTile({
 function ModGrid({
   mods,
   selectedPath,
-  lite,
   onSelect,
 }: {
   mods: ModCard[]
   selectedPath: string | null
-  lite: boolean
   onSelect: (path: string) => void
 }) {
   const { t } = useTranslation()
@@ -530,7 +526,6 @@ function ModGrid({
           card={card}
           index={index}
           selected={card.folder_path === selectedPath}
-          lite={lite}
           tabbable={
             card.folder_path === selectedPath || (!selectedPath && index === 0)
           }
@@ -662,9 +657,8 @@ function SettingsView({
         <div className="setting-tail">
           <span className="badge">M4</span>
           <SettingSwitch
-            checked={settings.pauseFullscreen || settings.liteMode}
+            checked={settings.pauseFullscreen}
             label={t('settings.pauseFullscreen.title')}
-            disabled={settings.liteMode}
             onChange={(value) => onSetSetting('pauseFullscreen', value)}
           />
         </div>
@@ -691,9 +685,8 @@ function SettingsView({
         <div className="setting-tail">
           <span className="badge">M5</span>
           <SettingSwitch
-            checked={settings.memorySaver || settings.liteMode}
+            checked={settings.memorySaver}
             label={t('settings.memorySaver.title')}
-            disabled={settings.liteMode}
             onChange={(value) => onSetSetting('memorySaver', value)}
           />
         </div>
@@ -763,7 +756,6 @@ export default function App() {
     pauseFullscreen: true,
     maxFps: 30,
     memorySaver: true,
-    liteMode: false,
   })
   const [library, setLibrary] = useState<LibrarySnapshot | null>(null)
   const [selectedModPath, setSelectedModPath] = useState<string | null>(null)
@@ -987,7 +979,7 @@ export default function App() {
   const loadingLibrary = isHosted() && library === null
 
   return (
-    <div className={settings.liteMode ? 'app lite' : 'app'}>
+    <div className="app">
       <aside className="sidebar">
         <div className="brand">
           <div className="brand-mark">O</div>
@@ -1112,7 +1104,6 @@ export default function App() {
                   <ModGrid
                     mods={library.mods}
                     selectedPath={selectedModPath}
-                    lite={settings.liteMode}
                     onSelect={setSelectedModPath}
                   />
                   <div className="mod-detail-stack">
@@ -1137,13 +1128,11 @@ export default function App() {
                     {library.errors.length > 0 && (
                       <p className="warn-text">{library.errors.join(' · ')}</p>
                     )}
-                    {!settings.liteMode && (
-                      <StatusCard
-                        state={hostState}
-                        version={version}
-                        wallpaperActive={wallpaperActive}
-                      />
-                    )}
+                    <StatusCard
+                      state={hostState}
+                      version={version}
+                      wallpaperActive={wallpaperActive}
+                    />
                   </div>
                 </>
               ) : (
@@ -1157,13 +1146,11 @@ export default function App() {
                     onImport={installFolder}
                     onAddImage={installImage}
                   />
-                  {!settings.liteMode && (
-                    <StatusCard
-                      state={hostState}
-                      version={version}
-                      wallpaperActive={wallpaperActive}
-                    />
-                  )}
+                  <StatusCard
+                    state={hostState}
+                    version={version}
+                    wallpaperActive={wallpaperActive}
+                  />
                 </>
               )}
             </section>

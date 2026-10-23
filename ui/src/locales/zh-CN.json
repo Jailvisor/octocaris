@@ -65,7 +65,7 @@
     },
     "pauseFullscreen": {
       "title": "全屏时暂停",
-      "desc": "游戏或视频全屏时停止渲染壁纸；轻量模式下强制开启。"
+      "desc": "游戏或视频全屏时停止渲染壁纸。"
     },
     "enableGpu": {
       "title": "硬件加速",
@@ -81,7 +81,7 @@
     },
     "memorySaver": {
       "title": "内存节省",
-      "desc": "关闭到托盘时挂起 Octos 主界面；轻量模式下直接关闭前端。"
+      "desc": "关闭到托盘时挂起 Octos 主界面。"
     },
     "language": {
       "title": "界面语言",

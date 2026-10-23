@@ -27,7 +27,7 @@
 - [x] Settings 实装：开机启动（HKCU Run）、全屏暂停（立即生效）、硬件加速（重启生效）三个真实开关；`允许通知` 按用户决定不做，保留 M8 占位。
 - [x] UI 细节（Win11 Fluent）：Mica 风格分层背景、Segoe UI Variable、4/8px 控件几何、焦点环、细滚动条、减少动效；卡片图片懒加载/淡入/失败占位；Library 骨架屏与空态；安装中 spinner + 成功/错误 InfoBar 式 toast；方向键在卡片间移动并按焦点切换详情；默认选中当前正在使用的壁纸。
 - [x] 窗口位置恢复：保存 `WINDOWPLACEMENT.rcNormalPosition` 到 prefs 的 `window`，退出时落盘，启动时校验显示器后恢复；最大化时保留还原尺寸。
-- [x] 轻量模式 + 托盘挂起：参考 Clash 的 Lightweight Mode，托盘菜单勾选“轻量模式”后销毁主 UI WebView、隐藏窗口，壁纸继续渲染；再次打开重建前端。强制开启“全屏时暂停”和“内存节省”，不改帧率；Settings 不显示该入口。设置页修复 flex 裁切并支持滚动。详见 `docs/lightweight-mode.md`。
+- [x] 轻量模式 + 托盘挂起：参考 Clash 的 Lightweight Mode，托盘菜单勾选“轻量模式”后销毁主 UI WebView、隐藏窗口，壁纸继续渲染；再次打开/重启应用重建前端并退出轻量模式。不简化 UI（预览图保留），强制全屏暂停 + 内存节省，不改帧率；Settings 不显示入口。托盘菜单中文化并跟随系统深色。详见 `docs/lightweight-mode.md`。
 
 ## 下一步
 

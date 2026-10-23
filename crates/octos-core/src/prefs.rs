@@ -42,12 +42,9 @@ pub struct AppOptions {
     /// requestAnimationFrame cap for wallpaper pages (0 = unlimited).
     #[serde(default = "default_max_fps")]
     pub max_fps: u32,
-    /// Suspend wallpaper WebViews after they have been hidden for a few seconds.
+    /// Suspend the main UI WebView while the window is hidden in the tray.
     #[serde(default = "default_true")]
     pub memory_saver: bool,
-    /// Preset that lowers the frame rate and enables MemorySaver.
-    #[serde(default)]
-    pub lite_mode: bool,
     #[serde(flatten)]
     pub extra: Map<String, Value>,
 }
@@ -60,7 +57,6 @@ impl Default for AppOptions {
             pause_fullscreen: true,
             max_fps: default_max_fps(),
             memory_saver: true,
-            lite_mode: false,
             extra: Map::new(),
         }
     }
@@ -210,7 +206,6 @@ mod tests {
         assert!(!preferences.app_options.pause_fullscreen);
         assert_eq!(preferences.app_options.max_fps, 60);
         assert!(preferences.app_options.memory_saver);
-        assert!(!preferences.app_options.lite_mode);
         assert_eq!(preferences.app_options.extra["allowNotifs"], json!(false));
 
         let encoded = serde_json::to_string(&preferences).unwrap();

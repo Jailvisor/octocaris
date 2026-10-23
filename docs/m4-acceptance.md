@@ -71,7 +71,8 @@ prefs 兼容性：
 - `appOptions` 现在类型化 `runOnStartup`、`enableGPU`、`pauseFullscreen`、`maxFps`、`memorySaver`、`liteMode`；其余未知键仍原样保留。
 - prefs 已按 M5 硬化：250ms debounce、退出 flush、`.bak`、`ReplaceFileW`；损坏隔离不变。
 - 全屏暂停、ProcessFailed、Explorer 重启、双屏/热插拔/redirect 已在 `docs/m5-hardening.md`、`docs/multimonitor.md` 实机验证。
-- MemorySaver/轻量模式见 `docs/lightweight-mode.md`、`docs/performance.md`：轻量模式从托盘开启，销毁主 UI WebView、壁纸继续渲染；再次打开重建前端；强制全屏暂停 + 内存节省，不改变壁纸帧率。
+- MemorySaver/轻量模式见 `docs/lightweight-mode.md`、`docs/performance.md`：轻量模式是托盘会话状态，销毁主 UI WebView、壁纸继续渲染；打开前端/重启即退出；不简化预览图；强制全屏暂停 + 内存节省，不改变壁纸帧率。
+- 主题见 `docs/theme.md`：跟随系统深/浅色，标题栏和托盘菜单同步。
 
 ## 7. UI / UX 实测（Win11 Fluent）
 

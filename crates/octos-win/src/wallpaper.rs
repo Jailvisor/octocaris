@@ -1580,6 +1580,10 @@ fn handle_wallpaper_loaded(device_name: &str, webview: &ICoreWebView2) {
     }
 }
 
+pub fn system_theme_is_light() -> bool {
+    is_theme_light()
+}
+
 fn is_theme_light() -> bool {
     let mut value: u32 = 0;
     let mut size = size_of::<u32>() as u32;
