@@ -651,10 +651,12 @@ impl WallpaperState {
         // z-order sibling actually changed.
         let mut current = RECT::default();
         let geometry_ok = unsafe { GetWindowRect(hwnd, &mut current) }.is_ok() && current == rect;
-        let z_ok = insert_after.map_or(true, |expected| {
-            (unsafe { GetWindow(hwnd, GW_HWNDPREV).ok() }) == Some(expected)
-        });
+        let z_ok = insert_after.map_or(true, |expected| z_order_below(hwnd, expected));
         if !geometry_ok || !z_ok {
+            debug!(
+                "repositioning wallpaper for {} (geometry_ok={geometry_ok}, z_ok={z_ok})",
+                self.slots[index].device_name
+            );
             position_wallpaper(hwnd, parent, insert_after, rect)?;
         }
 
@@ -669,7 +671,13 @@ impl WallpaperState {
                     .map(|webview| webview.resize(hwnd));
                 if let Some(result) = resized {
                     match result {
-                        Ok(()) => self.slots[index].applied_client = Some(size),
+                        Ok(()) => {
+                            debug!(
+                                "resized wallpaper WebView for {} to {}x{}",
+                                self.slots[index].device_name, size.0, size.1
+                            );
+                            self.slots[index].applied_client = Some(size);
+                        }
                         Err(err) => warn!(
                             "could not resize wallpaper WebView for {}: {err:?}",
                             self.slots[index].device_name
@@ -800,6 +808,10 @@ impl WallpaperState {
                 continue;
             }
 
+            debug!(
+                "applying wallpaper visibility {visible} for {}",
+                slot.device_name
+            );
             let mut applied = true;
             if let Some(webview) = &slot.webview
                 && let Err(err) = webview.set_visible(visible)
@@ -1037,10 +1049,9 @@ fn position_wallpaper(
         SetWindowPos(hwnd, insert_after, x, y, width, height, flags)?;
 
         if let Some(expected) = insert_after {
-            let previous = GetWindow(hwnd, GW_HWNDPREV).ok();
-            if previous != Some(expected) {
+            if !z_order_below(hwnd, expected) {
                 debug!(
-                    "wallpaper z-order mismatch: prev={previous:?}, expected={expected:?}; reinserting"
+                    "wallpaper z-order mismatch for {hwnd:?}, expected below {expected:?}; reinserting"
                 );
                 SetWindowPos(hwnd, Some(expected), x, y, width, height, SWP_NOACTIVATE)?;
             }
@@ -1051,6 +1062,27 @@ fn position_wallpaper(
 
 fn rects_overlap(a: RECT, b: RECT) -> bool {
     a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom
+}
+
+/// True when `hwnd` is below `expected` in z-order, treating any run of other
+/// Octos wallpaper windows as our own stack. Multiple monitors put several
+/// wallpapers below SHELLDLL_DefView; only the topmost one is its direct
+/// sibling, so comparing just one `GW_HWNDPREV` would reposition every tick.
+fn z_order_below(hwnd: HWND, expected: HWND) -> bool {
+    let mut current = hwnd;
+    for _ in 0..16 {
+        let Some(previous) = (unsafe { GetWindow(current, GW_HWNDPREV).ok() }) else {
+            return false;
+        };
+        if previous == expected {
+            return true;
+        }
+        if window_class_name(previous) != "OctosWallpaperWindow" {
+            return false;
+        }
+        current = previous;
+    }
+    false
 }
 
 fn point_in_rect(point: POINT, rect: RECT) -> bool {

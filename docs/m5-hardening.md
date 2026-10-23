@@ -121,6 +121,8 @@ z-order 说明：退出全屏后，WebView2 `Chrome_WidgetWin_1` 与 Progman 之
 - `fullscreen-probe.ps1`：仍然正确隐藏/恢复；两屏桌面验证 PASS。
 - 双屏 wallpaper/Chrome overlay 数量恢复为 2。
 
+补充：多显示器下，两块壁纸都是 `SHELLDLL_DefView` 下方的兄弟窗口。旧检查要求每块壁纸的**直接 prev** 都是 DefView，第二块屏永远不满足，于是每 500ms 重新 `SetWindowPos`。现在 `z_order_below` 允许连续的 Octos wallpaper 链；启动后只修正一次，稳定后 10 秒空闲内 `reposition=0`、`resize=0`、`visibility=0`、`fullscreen=0`（调试日志实测）。
+
 与上游对照：
 - 上游 `SetWebViewVisibility` 用 `hidden` 标记避免重复 `put_IsVisible`；Rust 之前没有等价缓存，已补上。
 - 上游全屏检测要求 `WS_OVERLAPPEDWINDOW`、无 owner、root、非 cloaked、覆盖工作区；Rust 版本更宽松，因此额外加了 Win11 shell 类名排除。没有直接照搬 `WS_OVERLAPPEDWINDOW`，是为了保留无边框全屏游戏/视频的检测。

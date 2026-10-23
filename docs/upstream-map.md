@@ -65,6 +65,7 @@
 | z-order | 周期 watchdog 维护 | 显式校验 `parent`/`insert_after` 句柄 + `GW_HWNDPREV` | Explorer 重建句柄时不落到图标上方 |
 | Chrome 覆盖层 | 只加 `WS_EX_LAYERED|WS_EX_TRANSPARENT` | 同上游；**禁止额外 `SetLayeredWindowAttributes(alpha=255)`** | 见 §4 |
 | Watchdog 写操作 | 只在 rect/order 需要时 `SetWindowPos`；`hidden` 标记避免重复 `put_IsVisible` | 同样只在变化时 SetWindowPos/SetBounds/SetIsVisible | 避免每 500ms 重新合成导致闪烁 |
+| 多屏 z-order | 单窗口 `GetNextWindow` 链式检查 | `z_order_below` 允许连续 OctosWallpaperWindow 链 | 多块壁纸都是 DefView 的兄弟，不能要求直接相邻 |
 | CLI 转发 | 第二实例 `WM_COPYDATA` 发送 `GetCommandLineW()` | 同上游；接收端在 UI 线程解析并执行 | 保持引号/Unicode 原样 |
 | `run` 已在 wallpapers 内 | 复制到自身，通常失败 | 直接使用该顶层 mod 目录 | 开发时运行已安装 mod 更顺手 |
 | `run` 新目录无 manifest | 允许任意含 HTML 的目录 | `install_folder` 要求 `octos.json`/`mod.json` | 与 M4 误装防护一致；无 manifest 的目录请先 `octos new` |
