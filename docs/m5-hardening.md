@@ -47,6 +47,18 @@
 - 关闭后：`visible=True`，日志 `fullscreen=false`。
 - 结论：全屏门控与恢复通过。
 
+## 桌面状态矩阵（M5 复测）
+
+`verify-desktop.ps1`，当前 200% DPI：
+
+| 状态 | SUMMARY | 结果 |
+|---|---|---|
+| 主窗口前台 | `iconsVisible=True wallpaperBelowIcons=True wallpaperVisible=True mainMinimized=False chromeOverlays=1 chromeLayeredTransparent=1` | PASS |
+| 主窗口最小化 | `wallpaperVisible=True mainMinimized=True chromeOverlays=1` | PASS |
+| 显示桌面（ToggleDesktop） | `wallpaperVisible=True mainMinimized=True chromeOverlays=1` | PASS |
+
+三种状态下壁纸都在 `SHELLDLL_DefView` 下方，Chrome 覆盖层保持 layered+transparent。
+
 ## 剩余 M5 项（需要人工/环境配合）
 
 1. **Explorer 重启**：需要用户同意后执行（会短暂重建桌面）。
