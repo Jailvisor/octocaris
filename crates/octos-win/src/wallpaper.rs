@@ -1064,23 +1064,26 @@ fn rects_overlap(a: RECT, b: RECT) -> bool {
     a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom
 }
 
-/// True when `hwnd` is below `expected` in z-order, treating any run of other
-/// Octos wallpaper windows as our own stack. Multiple monitors put several
-/// wallpapers below SHELLDLL_DefView; only the topmost one is its direct
-/// sibling, so comparing just one `GW_HWNDPREV` would reposition every tick.
+/// True when `hwnd` is somewhere below `expected` in the z-order chain.
+///
+/// This mirrors upstream `FixWallpaperOrder`: walk `GW_HWNDNEXT` from
+/// `SHELLDLL_DefView` and look for our window. Explorer inserts helper windows
+/// between DefView and the wallpaper when the desktop is clicked; those do not
+/// mean the wallpaper escaped above the icons, so strict adjacency would cause
+/// a needless (visible) SetWindowPos on every click.
 fn z_order_below(hwnd: HWND, expected: HWND) -> bool {
-    let mut current = hwnd;
-    for _ in 0..16 {
-        let Some(previous) = (unsafe { GetWindow(current, GW_HWNDPREV).ok() }) else {
+    let mut current = expected;
+    for _ in 0..64 {
+        let Some(next) = (unsafe { GetWindow(current, GW_HWNDNEXT).ok() }) else {
             return false;
         };
-        if previous == expected {
+        if next == hwnd {
             return true;
         }
-        if window_class_name(previous) != "OctosWallpaperWindow" {
+        if next.is_invalid() {
             return false;
         }
-        current = previous;
+        current = next;
     }
     false
 }
