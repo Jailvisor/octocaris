@@ -56,7 +56,7 @@
 | 桌面 App UI | vanilla HTML/CSS/JS，DOM 即状态 | React 19 + TS + Vite + 类型化 IPC | 现代化、可维护；App 窗口内部协议不属于 mod 契约 |
 | 显示器关联 | vector 索引 | 设备名 `\\.\DISPLAYn` + rect 兜底 | 修复热插拔/重排错位 |
 | WebView2 初始化 | 阻塞等待环境 | 异步状态机 + generation | 避免 UI 线程卡死 |
-| prefs | 非原子写 | 原子 replace + `.bak` + 损坏隔离（M3） | 防数据丢失 |
+| prefs | 非原子写 | 原子 replace + `.bak` + 损坏隔离；250ms debounce + 退出 flush | 防数据丢失/减少滑块写盘 |
 | 沙箱 | `enableSandboxing` 取反 | 默认启用；不传 `--no-sandbox` | 修复旧 bug |
 | 日志 | 无控制台、无文件 | `tracing` 滚动文件 | 可诊断 |
 | 全屏检测 | 工作区+样式+owner+cloaked | 额外排除 `Chrome_WidgetWin_*`、`WebView2*`、`*OverlayWindow` | 避免 WebView2 自身窗口导致闪烁 |

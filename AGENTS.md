@@ -5,7 +5,7 @@
 ## 0. 当前状态
 
 - 项目：把 Windows 动态壁纸引擎 **Octos** 从 C++/Win32 重写为 **Rust + WebView2 + React**，保留旧 mod 生态。
-- 阶段：**M4 完成（验收报告 `docs/m4-acceptance.md`）**：i18n、Library、按显示器选择、选项表单、zip/文件夹/拖拽安装、卸载、错误 toast、`preferences.json` v2 持久化（选中项 + modOptions + appOptions + 窗口位置）、CLI（`run/reload/new/dev-tools` + `WM_COPYDATA` 第二实例转发）、Settings 三个真实开关（开机启动/全屏暂停/硬件加速）、Win11 Fluent UI 收尾（骨架屏/空态/图片懒加载/键盘导航/InfoBar toast/窗口位置恢复）均已实装并实机验证。`允许通知` 按用户决定不做（M8 占位）。**M3 已完成**：`sdk/` 冻结、`octos-core`（31 tests）、`octos-protocol`（10 tests）、`octos-storage`（16 tests）、壁纸宿主请求链 + options 事件/hooks + 旧 `octos.min.js` conformance；仅剩 redirect 多显示器实机验证。M2 核心验收通过（多显示器/真实游戏/ProcessFailed 为已知缺口）。报告：`docs/m0-spike.md`、`docs/m1-shell.md`、`docs/m2-wallpaper.md`、`docs/m2-acceptance.md`、`docs/m3-plan.md`、`docs/m3-conformance.md`、`docs/m4-plan.md`、`docs/m4-acceptance.md`、`docs/upstream-map.md`、`docs/ux-review-checklist.md`。
+- 阶段：**M4 完成（验收报告 `docs/m4-acceptance.md`）**：i18n、Library、按显示器选择、选项表单、zip/文件夹/拖拽安装、卸载、错误 toast、`preferences.json` v2 持久化（选中项 + modOptions + appOptions + 窗口位置）、CLI（`run/reload/new/dev-tools` + `WM_COPYDATA` 第二实例转发）、Settings 三个真实开关（开机启动/全屏暂停/硬件加速）、Win11 Fluent UI 收尾（骨架屏/空态/图片懒加载/键盘导航/InfoBar toast/窗口位置恢复）均已实装并实机验证。`允许通知` 按用户决定不做（M8 占位）。**M5 进行中**：prefs 250ms debounce、退出 flush、`ReplaceFileW` 保留 `.bak` 已完成并实测（见 `docs/m5-hardening.md`）；多显示器、真实全屏、ProcessFailed 待做。**M3 已完成**：`sdk/` 冻结、`octos-core`（31 tests）、`octos-protocol`（10 tests）、`octos-storage`（20 tests）、壁纸宿主请求链 + options 事件/hooks + 旧 `octos.min.js` conformance；仅剩 redirect 多显示器实机验证。M2 核心验收通过（多显示器/真实游戏/ProcessFailed 为已知缺口）。报告：`docs/m0-spike.md`、`docs/m1-shell.md`、`docs/m2-wallpaper.md`、`docs/m2-acceptance.md`、`docs/m3-plan.md`、`docs/m3-conformance.md`、`docs/m4-plan.md`、`docs/m4-acceptance.md`、`docs/upstream-map.md`、`docs/ux-review-checklist.md`。
 - 新仓库：`/home/lzt/codehub/rust/octos/octos-rs`（本目录）。
 - 上游参考：`/home/lzt/codehub/rust/octos/octos`，**只读**，用于行为对照和兼容性测试。Rust ↔ C++ 的模块映射、有意差异和已踩过的偏差见 `docs/upstream-map.md`；新增 Win32/WebView2 行为前先对照它。
 - 已批准计划：`~/.claude/plans/unified-dancing-lollipop.md`。仓库内的架构决策写到 `docs/`。
@@ -127,7 +127,7 @@ octos-rs/
 - **WebView2 异步状态机**：`Empty -> EnvPending -> ControllerCreating -> Ready/Failed`。不要阻塞 UI 线程等待环境创建。每个窗口槽位带 generation，已销毁窗口的迟到回调直接丢弃；销毁前先 `Controller.Close()`。
 - **显示器按设备名 `\\.\DISPLAYn` 关联**，`HMONITOR`/矩形只做辅助。禁止用 vector 索引对应窗口和显示器。
 - **mod 身份用绝对文件夹路径**（旧 prefs 的 `modOptions/selected` 键依赖它）。不要改成 folder name 归一化。
-- **prefs 原子写**：同目录临时文件 → flush/`sync_all` → `ReplaceFileW`，保留 `.bak`。写盘 debounce 250ms，退出前 flush。损坏文件隔离为 `.corrupt-<timestamp>`。
+- **prefs 原子写**：同目录临时文件（进程 id + 原子计数）→ flush/`sync_all` → `ReplaceFileW`，保留 `.bak`；失败回退 `MoveFileExW`。UI 线程只提交快照，`PrefsWriter` 后台线程 debounce 250ms，退出前 flush 并 join。损坏文件隔离为 `.corrupt-<timestamp>`。
 - **MVP 媒体/音频是协议桩**：requests 永远 resolve 空/默认值，命令静默忽略，订阅接受但不推送。不能模块化地“暂时不支持”导致 Promise 挂起。
 - **虚拟主机**：`app.octos` → `<exe>/app`，`local.octos` → wallpapers 目录。mod entry/image 生成 URL 时做百分号编码。
 - **错误处理**：库层 `thiserror`，app 层 `anyhow`；FFI 回调里不要 `unwrap`/`panic`，记录日志并返回失败。
@@ -240,7 +240,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/verify-desktop.p
 | M2 | 壁纸核心：挂载、透明、输入、全屏、Explorer 恢复（核心验收通过；多显示器/ProcessFailed 为已知缺口） |
 | M3 | 协议与 System/UserOptions/MonitorBridge 兼容（媒体桩） |
 | M4 | React Library + 选项 + CLI + Settings 持久化（完成，见 `docs/m4-acceptance.md`） |
-| M5 | 硬化：热插拔、DPI、prefs debounce/.bak、全屏暂停（进行中） |
+| M5 | 硬化：热插拔、DPI、prefs debounce/.bak（已完成）、真实全屏、ProcessFailed（进行中） |
 | M6 | 真实 GSMTC 媒体 + WASAPI 音频 |
 | M7 | 社区 Explore/下载 |
 | M8 | 完整 Settings、安装包、文档 |
@@ -271,7 +271,7 @@ M4 进度 / 下一步（详见 `docs/m4-plan.md`、`docs/m4-acceptance.md`）：
 5. [x] Settings：开机启动、全屏暂停、硬件加速。
 6. [x] UI 细节（Win11 Fluent、安装反馈、图片懒加载、空态/骨架屏、键盘导航、窗口位置恢复）。
 7. [ ] 多显示器与真实社区 mod 的 M4 回归。
-8. [ ] prefs 写盘 debounce + `.bak`（M5）。
+8. [x] prefs 写盘 debounce + `.bak`（M5，见 `docs/m5-hardening.md`）。
 
 ## 11. 工作流
 

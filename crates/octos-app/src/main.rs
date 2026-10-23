@@ -29,6 +29,7 @@ static PREFERENCES: Mutex<Option<Preferences>> = Mutex::new(None);
 /// arrive before WebView2 finishes initializing wait here.
 static WALLPAPERS_READY: AtomicBool = AtomicBool::new(false);
 static PENDING_CLI: Mutex<Vec<Command>> = Mutex::new(Vec::new());
+static PREFS_WRITER: Mutex<Option<octos_storage::PrefsWriter>> = Mutex::new(None);
 
 struct ComGuard;
 
@@ -93,6 +94,10 @@ fn run(paths: Paths) -> Result<()> {
     *PREFERENCES
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(preferences.clone());
+    *PREFS_WRITER
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner()) =
+        Some(octos_storage::PrefsWriter::start());
 
     unsafe {
         let _ = SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
@@ -453,7 +458,7 @@ fn run(paths: Paths) -> Result<()> {
 
     octos_win::run_message_loop();
     // Flush the latest window placement and session state before tearing down.
-    save_preferences(&flush_paths);
+    flush_preferences(&flush_paths);
     octos_win::wallpaper::shutdown();
     octos_win::remove_tray_icon(hwnd);
     info!("message loop stopped");
@@ -550,19 +555,57 @@ fn apply_setting(paths: &Paths, key: &str, value: &serde_json::Value) -> Result<
     Ok(())
 }
 
-fn save_preferences(paths: &Paths) {
+fn snapshot_preferences() -> Option<Preferences> {
     let selected = octos_win::wallpaper::selected_monitors();
     let options = octos_win::wallpaper::all_options();
     let mut guard = PREFERENCES
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
-    let Some(preferences) = guard.as_mut() else {
-        return;
-    };
+    let preferences = guard.as_mut()?;
     preferences.set_selected(selected);
     preferences.set_mod_options(options);
-    if let Err(err) = octos_storage::save_preferences(&paths.preferences, preferences) {
+    Some(preferences.clone())
+}
+
+/// Queue a snapshot; the writer coalesces bursts (slider drags, window moves)
+/// and writes after 250ms of quiet.
+fn save_preferences(paths: &Paths) {
+    let Some(preferences) = snapshot_preferences() else {
+        return;
+    };
+    let writer = PREFS_WRITER
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if let Some(writer) = writer.as_ref()
+        && writer.schedule(paths.preferences.clone(), preferences.clone())
+    {
+        return;
+    }
+    drop(writer);
+    if let Err(err) = octos_storage::save_preferences(&paths.preferences, &preferences) {
         error!("could not save preferences: {err}");
+    }
+}
+
+/// Write the newest snapshot and join the writer before the process exits.
+fn flush_preferences(paths: &Paths) {
+    let preferences = snapshot_preferences();
+    let mut guard = PREFS_WRITER
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    match (guard.as_ref(), preferences) {
+        (Some(writer), Some(preferences)) => {
+            let _ = writer.schedule(paths.preferences.clone(), preferences);
+        }
+        (None, Some(preferences)) => {
+            if let Err(err) = octos_storage::save_preferences(&paths.preferences, &preferences) {
+                error!("could not save preferences: {err}");
+            }
+        }
+        _ => {}
+    }
+    if let Some(mut writer) = guard.take() {
+        writer.flush();
     }
 }
 

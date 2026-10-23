@@ -18,7 +18,7 @@ pub mod template;
 
 pub use atomic::write_atomic;
 pub use install::{InstallError, install_folder, install_zip, remove_mod};
-pub use prefs::{load_preferences, save_preferences};
+pub use prefs::{PrefsWriter, load_preferences, save_preferences};
 pub use template::create_mod_template;
 
 use std::path::{Path, PathBuf};
