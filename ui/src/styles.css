@@ -107,6 +107,7 @@ button:disabled {
   display: grid;
   grid-template-columns: 240px minmax(0, 1fr);
   height: 100%;
+  min-height: 0;
 }
 
 /* ---------- Sidebar ---------- */
@@ -242,9 +243,33 @@ button:disabled {
 main {
   display: flex;
   min-width: 0;
+  min-height: 0;
   flex-direction: column;
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  scroll-behavior: smooth;
   padding: 28px 32px 22px;
+}
+
+main::-webkit-scrollbar {
+  width: 10px;
+}
+
+main::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+main::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.22);
+  background-clip: content-box;
+}
+
+main::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.34);
+  background-clip: content-box;
 }
 
 .page-header {
@@ -950,7 +975,9 @@ h1 {
 /* ---------- Settings ---------- */
 
 .settings-panel {
+  flex: 0 0 auto;
   overflow: hidden;
+  margin-bottom: 40px;
 }
 
 .setting-row {

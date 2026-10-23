@@ -662,8 +662,9 @@ function SettingsView({
         <div className="setting-tail">
           <span className="badge">M4</span>
           <SettingSwitch
-            checked={settings.pauseFullscreen}
+            checked={settings.pauseFullscreen || settings.liteMode}
             label={t('settings.pauseFullscreen.title')}
+            disabled={settings.liteMode}
             onChange={(value) => onSetSetting('pauseFullscreen', value)}
           />
         </div>

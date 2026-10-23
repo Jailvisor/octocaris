@@ -61,7 +61,6 @@ type CommandHandler = Rc<dyn Fn(&str)>;
 type PlacementHandler = Rc<dyn Fn(WindowPlacement)>;
 type DisplayChangeHandler = Rc<dyn Fn()>;
 
-#[derive(Default)]
 struct WinState {
     hwnd: HWND,
     controller: Option<ICoreWebView2Controller>,
@@ -69,10 +68,29 @@ struct WinState {
     tray_added: bool,
     taskbar_created: u32,
     quitting: bool,
+    memory_saver: bool,
     drop_handler: Option<DropHandler>,
     command_handler: Option<CommandHandler>,
     placement_handler: Option<PlacementHandler>,
     display_change_handler: Option<DisplayChangeHandler>,
+}
+
+impl Default for WinState {
+    fn default() -> Self {
+        Self {
+            hwnd: HWND::default(),
+            controller: None,
+            webview: None,
+            tray_added: false,
+            taskbar_created: 0,
+            quitting: false,
+            memory_saver: true,
+            drop_handler: None,
+            command_handler: None,
+            placement_handler: None,
+            display_change_handler: None,
+        }
+    }
 }
 
 thread_local! {
@@ -374,6 +392,16 @@ pub fn post_to_main_webview(payload: &str) {
     }
 }
 
+/// Toggle the "suspend Octos while hidden in the tray" setting.
+pub fn set_memory_saver(enabled: bool) {
+    with_state(|state| state.memory_saver = enabled);
+    info!("memory saver (tray suspend) set to {enabled}");
+}
+
+fn memory_saver_enabled() -> bool {
+    with_state(|state| state.memory_saver)
+}
+
 /// Pause/resume the main React UI when the window is hidden to the tray or
 /// restored. `TrySuspend` frees the renderer while the window is not visible;
 /// `Resume` runs before showing it again.
@@ -593,7 +621,9 @@ unsafe extern "system" fn wndproc(
             unsafe {
                 let _ = ShowWindow(hwnd, SW_HIDE);
             }
-            set_main_webview_active(false);
+            if memory_saver_enabled() {
+                set_main_webview_active(false);
+            }
             LRESULT(0)
         }
         WM_DESTROY => {

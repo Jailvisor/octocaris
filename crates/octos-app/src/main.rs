@@ -467,7 +467,7 @@ fn run(paths: Paths) -> Result<()> {
                     );
                     octos_win::wallpaper::set_fps_cap(startup_preferences.app_options.max_fps);
                     // Lite mode implies MemorySaver; honour a persisted opt-out otherwise.
-                    octos_win::wallpaper::set_memory_saver(
+                    octos_win::set_memory_saver(
                         startup_preferences.app_options.memory_saver
                             || startup_preferences.app_options.lite_mode,
                     );
@@ -599,6 +599,11 @@ fn apply_setting(paths: &Paths, key: &str, value: &serde_json::Value) -> Result<
             }
             "pauseFullscreen" => {
                 let enabled = boolean(key)?;
+                if !enabled && preferences.app_options.lite_mode {
+                    return Err(anyhow!(
+                        "disable lite mode before disabling fullscreen pause"
+                    ));
+                }
                 preferences.app_options.pause_fullscreen = enabled;
                 octos_win::wallpaper::set_pause_fullscreen(enabled);
                 info!("pause on fullscreen set to {enabled}");
@@ -618,20 +623,22 @@ fn apply_setting(paths: &Paths, key: &str, value: &serde_json::Value) -> Result<
                     return Err(anyhow!("disable lite mode before disabling memory saver"));
                 }
                 preferences.app_options.memory_saver = enabled;
-                octos_win::wallpaper::set_memory_saver(enabled);
-                info!("memory saver set to {enabled}");
+                octos_win::set_memory_saver(enabled);
             }
             "liteMode" => {
                 let enabled = boolean(key)?;
                 preferences.app_options.lite_mode = enabled;
                 if enabled {
                     // Lite mode simplifies the React UI (no thumbnails/animation
-                    // effects) and turns on MemorySaver. It must not change the
-                    // wallpaper frame rate: that stays a separate setting.
+                    // effects), pauses wallpapers on fullscreen and suspends the
+                    // main UI when hidden in the tray. Wallpaper FPS stays a
+                    // separate setting.
+                    preferences.app_options.pause_fullscreen = true;
                     preferences.app_options.memory_saver = true;
-                    octos_win::wallpaper::set_memory_saver(true);
+                    octos_win::wallpaper::set_pause_fullscreen(true);
+                    octos_win::set_memory_saver(true);
                 }
-                info!("lite mode set to {enabled} (UI simplified; wallpaper fps unchanged)");
+                info!("lite mode set to {enabled} (UI simplified; fps unchanged)");
             }
             other => return Err(anyhow!("unknown setting: {other}")),
         }

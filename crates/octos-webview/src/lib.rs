@@ -16,7 +16,7 @@ use webview2_com::{
     CreateCoreWebView2CompositionControllerCompletedHandler,
     CreateCoreWebView2ControllerCompletedHandler, CreateCoreWebView2EnvironmentCompletedHandler,
     Microsoft::Web::WebView2::Win32::*, NavigationCompletedEventHandler, ProcessFailedEventHandler,
-    TrySuspendCompletedHandler, WebMessageReceivedEventHandler, take_pwstr,
+    WebMessageReceivedEventHandler, take_pwstr,
 };
 use windows::Win32::Foundation::{HMODULE, HWND, RECT};
 use windows::Win32::Graphics::Direct3D::{D3D_DRIVER_TYPE_HARDWARE, D3D_FEATURE_LEVEL};
@@ -364,33 +364,6 @@ impl WallpaperWebView {
         unsafe {
             self.controller.SetIsVisible(visible)?;
             self.dcomp.Commit()?;
-        }
-        Ok(())
-    }
-
-    /// Ask WebView2 to suspend a hidden page (MemorySaver). The completion is
-    /// asynchronous; callers should treat the page as suspended immediately and
-    /// call `resume` before showing it again.
-    pub fn try_suspend(&self, device: &str) -> Result<()> {
-        let webview: ICoreWebView2_3 = self.webview.cast()?;
-        let device = device.to_string();
-        let handler = TrySuspendCompletedHandler::create(Box::new(move |result, suspended| {
-            match result {
-                Ok(()) => info!("wallpaper {device} suspend completed: {}", suspended),
-                Err(err) => warn!("could not suspend wallpaper {device}: {err:?}"),
-            }
-            Ok(())
-        }));
-        unsafe {
-            webview.TrySuspend(&handler)?;
-        }
-        Ok(())
-    }
-
-    pub fn resume(&self) -> Result<()> {
-        let webview: ICoreWebView2_3 = self.webview.cast()?;
-        unsafe {
-            webview.Resume()?;
         }
         Ok(())
     }
