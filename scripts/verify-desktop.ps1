@@ -9,7 +9,8 @@ Run it in all of these states:
 
 Expected in every state:
   - SysListView32 (desktop icons) visible
-  - OctosWallpaperWindow parent=Progman, prev=SHELLDLL_DefView (wallpaper below icons)
+  - when the wallpaper is visible: parent=Progman, prev=SHELLDLL_DefView
+    (when fullscreen hides it, the z-order handles may be empty)
   - msedgewebview2 Chrome_WidgetWin_* overlay is layered+transparent (per-pixel alpha)
   - desktop right-click opens the context menu
   - clicking a wallpaper button produces a `wallpaper page:` log entry
@@ -99,6 +100,19 @@ public class OctosDesktopCheck {
         return (ex & 0x00080000) != 0 && (ex & 0x00000020) != 0;
     }
 
+    // Hidden IME/helper windows can sit between the WebView2 host and Progman
+    // without affecting what the user sees. Walk down through invisible windows
+    // and fail only if a visible window is above the desktop.
+    static bool ReachesProgman(IntPtr h, IntPtr progman) {
+        for (int i = 0; i < 16; i++) {
+            h = GetWindow(h, 2);
+            if (h == IntPtr.Zero) { return false; }
+            if (h == progman) { return true; }
+            if (IsWindowVisible(h)) { return false; }
+        }
+        return false;
+    }
+
     static void Walk(IntPtr h) {
         string c = Cls(h);
         if (c == "OctosMainWindow") {
@@ -176,7 +190,8 @@ public class OctosDesktopCheck {
             bool isWebView2 = proc.StartsWith("msedgewebview2/");
             IntPtr prev = GetWindow(h, 3);
             IntPtr next = GetWindow(h, 2);
-            bool nextProgman = next == progman;
+            bool immediateProgman = next == progman;
+            bool nextProgman = ReachesProgman(h, progman);
             bool layeredTransparent = LayeredTransparent(h);
             if (isWebView2) { chromeOverlays++; } else { otherChromeWindows++; }
             if (isWebView2 && nextProgman) { chromeNextProgman++; }
@@ -189,7 +204,8 @@ public class OctosDesktopCheck {
                 " ex=" + ExStyle(h) +
                 " prev=" + prev + "(" + Cls(prev) + ")" +
                 " next=" + next + "(" + Cls(next) + ")" +
-                " nextIsProgman=" + nextProgman +
+                " nextIsProgman=" + immediateProgman +
+                " reachesProgman=" + nextProgman +
                 " layeredTransparent=" + layeredTransparent +
                 " webview2=" + isWebView2);
             return true;
@@ -206,11 +222,13 @@ public class OctosDesktopCheck {
             " chromeNextProgman=" + chromeNextProgman +
             " chromeLayeredTransparent=" + chromeLayeredTransparent);
 
-        if (!iconsVisible || !wallpaperBelowIcons) {
-            Console.WriteLine("WARN: expected iconsVisible=True and wallpaperBelowIcons=True.");
+        if (!iconsVisible || (wallpaperVisible && !wallpaperBelowIcons)) {
+            Console.WriteLine("WARN: expected iconsVisible=True and (when visible) wallpaperBelowIcons=True.");
         } else if (wallpaperVisible && chromeOverlays == 0) {
             Console.WriteLine("WARN: wallpaper window is visible but no full-screen WebView2 Chrome host exists;");
             Console.WriteLine("      the gradient may not render (controller/bounds lifecycle issue).");
+        } else if (!wallpaperVisible) {
+            Console.WriteLine("PASS: wallpaper is hidden (fullscreen); desktop icons are visible.");
         } else {
             Console.WriteLine("PASS: wallpaper is below the icon layer and desktop icons are visible.");
         }

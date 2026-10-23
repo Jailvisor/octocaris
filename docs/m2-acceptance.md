@@ -47,7 +47,7 @@
 ## 4. 已知缺口 / 延后
 
 - **多显示器**：当前环境只有 `\\.\DISPLAY1`；registry/定位代码存在但未实测。
-- **真实游戏/视频全屏**：用边框全屏测试窗口验证过；建议再用真实应用回归。
+- **真实游戏/视频全屏**：边框全屏窗口与 PotPlayer 真实全屏均已在 M5 验证通过。
 - **ProcessFailed**：已在 M5 完成（主 UI reload、壁纸 controller 重建），见 `docs/m5-hardening.md`。
 - **按显示器设置/清除**：后端只有 `show_all`/`clear_all`，UI 没有按显示器选择。
 - **壁纸 JS API**：`System`/`UserOptions`/`MonitorBridge` 还没接；`MediaController`/音频还是 M6。

@@ -47,6 +47,18 @@
 - 关闭后：`visible=True`，日志 `fullscreen=false`。
 - 结论：全屏门控与恢复通过。
 
+## 已完成：真实视频全屏回归
+
+使用 PotPlayer 全屏播放视频（2880×1800 物理 / 200% DPI）：
+
+| 状态 | 结果 |
+|---|---|
+| 全屏视频 | 日志 `fullscreen=true`（02:39:25Z）；`OctosWallpaperWindow visible=False`；图标可见 |
+| 退出全屏 | 日志 `fullscreen=false`（02:46:49Z）；壁纸 `visible=True`、`prev=SHELLDLL_DefView`、`belowIcons=True`；L2D 壁纸重新渲染 |
+| 恢复后桌面 | `E:\file\octos\m5-fullscreen-restored.png`（壁纸 + 桌面图标同时可见） |
+
+z-order 说明：退出全屏后，WebView2 `Chrome_WidgetWin_1` 与 Progman 之间夹着若干隐藏的 IME/helper 窗口，所以 `nextIsProgman=False`，但沿 z-order 跳过隐藏窗口后 `reachesProgman=True`。`verify-desktop.ps1` 已改为区分 `nextIsProgman` 和 `reachesProgman`，SUMMARY 的 `chromeNextProgman=1` 表示没有可见窗口挡在桌面之上。
+
 ## 桌面状态矩阵（M5 复测）
 
 `verify-desktop.ps1`，当前 200% DPI：
@@ -78,11 +90,12 @@
 
 **说明**：100%/150% 目前是 UI 截图证据；桌面层级检查（壁纸在图标层下、Chrome 覆盖层透明）只在 200% 实机跑过。若需要完整矩阵，请在 100% 或 150% 下停留并告知，我再跑 `verify-desktop.ps1`。
 
-## 剩余 M5 项（需要人工/环境配合）
+## M5 结论
 
-1. 真实游戏/视频全屏：需要启动真实应用；边框全屏窗口已通过。
-2. 多显示器 / `redirect` / 热插拔：按用户决定另说。
-3. 100%/150% 下的桌面层级验证（如上，需要保持缩放）。
+- 代码项全部完成：prefs 写盘硬化、ProcessFailed 恢复、真实全屏门控、Explorer 重启恢复、桌面矩阵、窗口位置。
+- DPI：UI 在 100% / 150% / 200% 均有截图或实机证据；桌面层级检查在 200% 完成。
+- **多显示器 / `redirect` / 热插拔**按用户决定推迟到后续阶段。
+- 100%/150% 下的桌面层级若要补齐，需要保持对应缩放后再跑一次 `verify-desktop.ps1`。
 
 ## 当前测试
 
