@@ -86,6 +86,11 @@
     "language": {
       "title": "界面语言",
       "desc": "切换界面语言，立即生效。"
+    },
+    "maxFps": {
+      "title": "壁纸帧率",
+      "desc": "限制壁纸动画帧率以节省 CPU/GPU，立即生效。",
+      "unlimited": "不限制"
     }
   },
   "bridge": {

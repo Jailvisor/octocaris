@@ -595,7 +595,7 @@ function SettingsView({
   desktopIcons: boolean
   onToggleDesktopIcons: () => void
   settings: SettingsSnapshot
-  onSetSetting: (key: keyof SettingsSnapshot, value: boolean) => void
+  onSetSetting: (key: keyof SettingsSnapshot, value: boolean | number) => void
 }) {
   const { t, i18n } = useTranslation()
   const language: AppLanguage = i18n.language.toLowerCase().startsWith('zh') ? 'zh-CN' : 'en'
@@ -672,6 +672,26 @@ function SettingsView({
       </div>
       <div className="setting-row">
         <div>
+          <h3>{t('settings.maxFps.title')}</h3>
+          <p>{t('settings.maxFps.desc')}</p>
+        </div>
+        <div className="setting-tail">
+          <span className="badge">M5</span>
+          <select
+            className="language-select"
+            value={settings.maxFps}
+            aria-label={t('settings.maxFps.title')}
+            onChange={(event) => onSetSetting('maxFps', Number(event.target.value))}
+          >
+            <option value={15}>15 FPS</option>
+            <option value={30}>30 FPS</option>
+            <option value={60}>60 FPS</option>
+            <option value={0}>{t('settings.maxFps.unlimited')}</option>
+          </select>
+        </div>
+      </div>
+      <div className="setting-row">
+        <div>
           <h3>{t('settings.enableGpu.title')}</h3>
           <p>{t('settings.enableGpu.desc')}</p>
         </div>
@@ -713,6 +733,7 @@ export default function App() {
     runOnStartup: false,
     enableGpu: true,
     pauseFullscreen: true,
+    maxFps: 30,
   })
   const [library, setLibrary] = useState<LibrarySnapshot | null>(null)
   const [selectedModPath, setSelectedModPath] = useState<string | null>(null)
@@ -912,11 +933,11 @@ export default function App() {
     }
   }
 
-  function setSetting(key: keyof SettingsSnapshot, value: boolean) {
+  function setSetting(key: keyof SettingsSnapshot, value: boolean | number) {
     if (isHosted()) {
       send({ type: 'set-setting', key, value })
     } else {
-      setSettings((current) => ({ ...current, [key]: value }))
+      setSettings((current) => ({ ...current, [key]: value }) as SettingsSnapshot)
     }
   }
 

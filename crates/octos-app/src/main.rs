@@ -465,6 +465,7 @@ fn run(paths: Paths) -> Result<()> {
                     octos_win::wallpaper::set_pause_fullscreen(
                         startup_preferences.app_options.pause_fullscreen,
                     );
+                    octos_win::wallpaper::set_fps_cap(startup_preferences.app_options.max_fps);
                     apply_startup_preferences(
                         &startup_preferences,
                         &wallpaper_key,
@@ -560,13 +561,16 @@ fn settings_snapshot() -> serde_json::Value {
         "runOnStartup": options.map(|options| options.run_on_startup).unwrap_or(false),
         "enableGpu": options.map(|options| options.enable_gpu).unwrap_or(true),
         "pauseFullscreen": options.map(|options| options.pause_fullscreen).unwrap_or(true),
+        "maxFps": options.map(|options| options.max_fps).unwrap_or(30),
     })
 }
 
 fn apply_setting(paths: &Paths, key: &str, value: &serde_json::Value) -> Result<()> {
-    let enabled = value
-        .as_bool()
-        .ok_or_else(|| anyhow!("setting {key} expects a boolean value"))?;
+    let boolean = |key: &str| {
+        value
+            .as_bool()
+            .ok_or_else(|| anyhow!("setting {key} expects a boolean value"))
+    };
 
     {
         let mut guard = PREFERENCES
@@ -577,17 +581,29 @@ fn apply_setting(paths: &Paths, key: &str, value: &serde_json::Value) -> Result<
             .ok_or_else(|| anyhow!("preferences are not loaded"))?;
         match key {
             "runOnStartup" => {
+                let enabled = boolean(key)?;
                 octos_win::startup::set_run_on_startup(enabled)?;
                 preferences.app_options.run_on_startup = enabled;
             }
             "enableGpu" => {
+                let enabled = boolean(key)?;
                 preferences.app_options.enable_gpu = enabled;
                 info!("GPU setting saved; it takes effect after restart");
             }
             "pauseFullscreen" => {
+                let enabled = boolean(key)?;
                 preferences.app_options.pause_fullscreen = enabled;
                 octos_win::wallpaper::set_pause_fullscreen(enabled);
                 info!("pause on fullscreen set to {enabled}");
+            }
+            "maxFps" => {
+                let fps = value
+                    .as_u64()
+                    .ok_or_else(|| anyhow!("setting maxFps expects a number"))?
+                    .min(240) as u32;
+                preferences.app_options.max_fps = fps;
+                octos_win::wallpaper::set_fps_cap(fps);
+                info!("wallpaper frame cap set to {fps} (0 = unlimited)");
             }
             other => return Err(anyhow!("unknown setting: {other}")),
         }

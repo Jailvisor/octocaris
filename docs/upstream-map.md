@@ -67,6 +67,7 @@
 | Watchdog 写操作 | 只在 rect/order 需要时 `SetWindowPos`；`hidden` 标记避免重复 `put_IsVisible` | 同样只在变化时 SetWindowPos/SetBounds/SetIsVisible | 避免每 500ms 重新合成导致闪烁 |
 | 多屏 z-order | `FixWallpaperOrder` 从 shellView 沿 `GW_HWNDNEXT` 查找 | 同样从 DefView 沿 `GW_HWNDNEXT` 查找（保留 64 步上限） | 多块壁纸/Explorer 辅助窗口插在中间都不应触发重排 |
 | 鼠标输入 z-order | 未显式处理 | `WM_WINDOWPOSCHANGING` 强制壁纸留在 DefView 下方 | `SendMouseInput` 会把壁纸 HWND 抬到图标层上方 |
+| 动画帧率 | 无上限 | `appOptions.maxFps`，默认 30；注入 rAF 节流 | 轻量化/省电 |
 | CLI 转发 | 第二实例 `WM_COPYDATA` 发送 `GetCommandLineW()` | 同上游；接收端在 UI 线程解析并执行 | 保持引号/Unicode 原样 |
 | `run` 已在 wallpapers 内 | 复制到自身，通常失败 | 直接使用该顶层 mod 目录 | 开发时运行已安装 mod 更顺手 |
 | `run` 新目录无 manifest | 允许任意含 HTML 的目录 | `install_folder` 要求 `octos.json`/`mod.json` | 与 M4 误装防护一致；无 manifest 的目录请先 `octos new` |

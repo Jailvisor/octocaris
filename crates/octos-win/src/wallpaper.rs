@@ -126,6 +126,10 @@ struct WallpaperState {
     pause_fullscreen: bool,
     fixed_chrome_windows: HashSet<isize>,
     session: Session,
+    fps_cap: u32,
+    last_foreground: HWND,
+    last_fullscreen_check: Instant,
+    last_overlay_check: Instant,
 }
 
 impl Default for WallpaperState {
@@ -141,6 +145,10 @@ impl Default for WallpaperState {
             pause_fullscreen: true,
             fixed_chrome_windows: HashSet::new(),
             session: Session::default(),
+            fps_cap: 30,
+            last_foreground: HWND::default(),
+            last_fullscreen_check: Instant::now(),
+            last_overlay_check: Instant::now(),
         }
     }
 }
@@ -267,6 +275,20 @@ pub fn open_dev_tools_all() -> usize {
 }
 
 /// Toggle the "pause on fullscreen" setting at runtime.
+pub fn set_fps_cap(fps: u32) {
+    let script = octos_core::frame_cap::set_script(fps);
+    let _ = with_state(|state| {
+        state.fps_cap = fps;
+        for slot in &state.slots {
+            if let Some(webview) = &slot.webview
+                && let Err(err) = execute_script(&webview.webview, &script)
+            {
+                warn!("could not update frame cap: {err:?}");
+            }
+        }
+    });
+}
+
 pub fn set_pause_fullscreen(enabled: bool) {
     let _ = with_state(|state| {
         if state.pause_fullscreen == enabled {
@@ -556,7 +578,6 @@ impl WallpaperState {
         }
 
         self.apply_visibility();
-        self.make_chrome_overlays_click_through();
         Ok(())
     }
 
@@ -734,6 +755,7 @@ impl WallpaperState {
             wallpapers_dir,
             entry_url,
             device_name.clone(),
+            self.fps_cap,
             move |webview, text| {
                 handle_wallpaper_message(&message_device, hwnd, webview, text);
             },
@@ -758,7 +780,7 @@ impl WallpaperState {
             move |result| match result {
                 Ok(webview) => {
                     let installed = with_state(|state| {
-                        if let Some(slot) = state
+                        let installed = if let Some(slot) = state
                             .slots
                             .iter_mut()
                             .find(|slot| slot.device_name == device_name && slot.hwnd == hwnd)
@@ -769,7 +791,9 @@ impl WallpaperState {
                             true
                         } else {
                             false
-                        }
+                        };
+                        state.make_chrome_overlays_click_through();
+                        installed
                     })
                     .unwrap_or(false);
                     if !installed {
@@ -870,7 +894,25 @@ unsafe extern "system" fn watchdog_timer(_hwnd: HWND, _message: u32, _id: usize,
         if let Err(err) = state.reconcile() {
             warn!("wallpaper watchdog reconcile failed: {err:?}");
         }
-        state.update_fullscreen();
+
+        // Fullscreen changes normally arrive with a foreground change. Keep a
+        // 2s fallback for apps that go fullscreen without activating.
+        let foreground = GetForegroundWindow();
+        let now = Instant::now();
+        if foreground != state.last_foreground
+            || now.duration_since(state.last_fullscreen_check) >= Duration::from_secs(2)
+        {
+            state.last_foreground = foreground;
+            state.last_fullscreen_check = now;
+            state.update_fullscreen();
+        }
+
+        // Chrome overlays only change when a controller is created; on_ready
+        // handles that immediately. The periodic pass is a safety net.
+        if now.duration_since(state.last_overlay_check) >= Duration::from_secs(2) {
+            state.last_overlay_check = now;
+            state.make_chrome_overlays_click_through();
+        }
     });
 }
 

@@ -16,6 +16,8 @@ pub mod catalog;
 
 pub mod cli;
 
+pub mod frame_cap;
+
 pub mod hooks;
 
 pub mod options;

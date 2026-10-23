@@ -86,6 +86,11 @@
     "language": {
       "title": "Language",
       "desc": "UI language. Changes apply immediately."
+    },
+    "maxFps": {
+      "title": "Wallpaper frame rate",
+      "desc": "Cap animation frame rate to save CPU and GPU. Applies immediately.",
+      "unlimited": "Unlimited"
     }
   },
   "bridge": {

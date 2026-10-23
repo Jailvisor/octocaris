@@ -408,6 +408,7 @@ impl CompositionDevice {
         wallpapers_dir: PathBuf,
         entry_url: String,
         monitor_id: String,
+        fps_cap: u32,
         mut on_message: impl FnMut(&ICoreWebView2, &str) + 'static,
         mut on_loaded: impl FnMut(&ICoreWebView2) + 'static,
         mut on_process_failed: impl FnMut(&ICoreWebView2, COREWEBVIEW2_PROCESS_FAILED_KIND) + 'static,
@@ -484,6 +485,27 @@ impl CompositionDevice {
                         webview.AddScriptToExecuteOnDocumentCreated(
                             PCWSTR::from_raw(scope_wide.as_ptr()),
                             &scope_handler,
+                        )?;
+
+                        let frame_script = octos_core::frame_cap::script(fps_cap);
+                        let frame_wide = wide(&frame_script);
+                        let frame_handler =
+                            AddScriptToExecuteOnDocumentCreatedCompletedHandler::create(Box::new(
+                                |result, script_id| {
+                                    match result {
+                                        Ok(()) => {
+                                            debug!("frame cap script installed: {script_id}")
+                                        }
+                                        Err(err) => {
+                                            warn!("could not install frame cap script: {err:?}")
+                                        }
+                                    }
+                                    Ok(())
+                                },
+                            ));
+                        webview.AddScriptToExecuteOnDocumentCreated(
+                            PCWSTR::from_raw(frame_wide.as_ptr()),
+                            &frame_handler,
                         )?;
                         webview.Navigate(PCWSTR::from_raw(url_wide.as_ptr()))?;
 

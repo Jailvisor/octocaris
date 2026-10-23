@@ -17,6 +17,10 @@ fn current_version() -> u32 {
     CURRENT_VERSION
 }
 
+fn default_max_fps() -> u32 {
+    30
+}
+
 /// Application settings stored under `appOptions`.
 ///
 /// Only settings the Rust host actually honours are typed. Everything else the
@@ -31,6 +35,9 @@ pub struct AppOptions {
     pub enable_gpu: bool,
     /// Pause wallpaper rendering while another window is fullscreen.
     pub pause_fullscreen: bool,
+    /// requestAnimationFrame cap for wallpaper pages (0 = unlimited).
+    #[serde(default = "default_max_fps")]
+    pub max_fps: u32,
     #[serde(flatten)]
     pub extra: Map<String, Value>,
 }
@@ -41,6 +48,7 @@ impl Default for AppOptions {
             run_on_startup: false,
             enable_gpu: true,
             pause_fullscreen: true,
+            max_fps: default_max_fps(),
             extra: Map::new(),
         }
     }
@@ -146,6 +154,7 @@ mod tests {
         assert_eq!(preferences.app_options.extra["allowNotifs"], json!(true));
         assert!(preferences.app_options.enable_gpu);
         assert!(preferences.app_options.pause_fullscreen);
+        assert_eq!(preferences.app_options.max_fps, 30);
         assert!(!preferences.app_options.run_on_startup);
         assert_eq!(
             preferences.extra["modData"]["C:/wallpapers/one"]["note"],
@@ -178,6 +187,7 @@ mod tests {
                 "runOnStartup": true,
                 "enableGPU": false,
                 "pauseFullscreen": false,
+                "maxFps": 60,
                 "memorySaver": true,
                 "allowNotifs": false
             }
@@ -186,6 +196,7 @@ mod tests {
         assert!(preferences.app_options.run_on_startup);
         assert!(!preferences.app_options.enable_gpu);
         assert!(!preferences.app_options.pause_fullscreen);
+        assert_eq!(preferences.app_options.max_fps, 60);
         assert_eq!(preferences.app_options.extra["memorySaver"], json!(true));
         assert_eq!(preferences.app_options.extra["allowNotifs"], json!(false));
 

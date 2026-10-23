@@ -28,6 +28,7 @@ export type SettingsSnapshot = {
   runOnStartup: boolean
   enableGpu: boolean
   pauseFullscreen: boolean
+  maxFps: number
 }
 
 export type LibrarySnapshot = {
