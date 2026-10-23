@@ -100,3 +100,27 @@ z-order 说明：退出全屏后，WebView2 `Chrome_WidgetWin_1` 与 Progman 之
 ## 当前测试
 
 - `octos-core` 31、`octos-protocol` 10、`octos-storage` 20，共 **61**。
+
+## 闪烁/点击桌面刷新修复
+
+现象：壁纸每隔一小段时间闪一下；左键单击桌面时更明显。
+
+根因（两个）：
+
+1. **watchdog 每 500ms 无条件重设窗口/合成**
+   - `reconcile` 每个 tick 都调用 `SetWindowPos`、`SetBounds`、`DComp Commit`、`SetIsVisible(true)`。
+   - 即使几何/尺寸/可见性没有变化，也会让分层窗口和 Composition surface 重新合成，表现为闪烁。
+   - 修复：只在几何或 z-order 变化时 `SetWindowPos`；只在 client size 变化时 resize；只在实际可见性变化时 `SetIsVisible`/`ShowWindow`。这符合上游 `WatchdogProc`/`FixRenderingTarget`“只在需要时修复”的意图。
+2. **Win11 shell 窗口被误判为全屏**
+   - 点击桌面时 `XamlExplorerHostIslandWindow` 会短暂铺满主屏；之前 `ShellHandwritingCanvas` 也会。
+   - 全屏检测把它们当成了全屏应用 → 隐藏壁纸 → 恢复，看起来就是“刷新”。
+   - 修复：全屏检测排除 `XamlExplorerHost*` 和 `ShellHandwritingCanvas*`；这两类不是用户全屏应用。
+
+实测：
+- 模拟桌面左键单击：`fullscreen=true` 计数不再增加。
+- `fullscreen-probe.ps1`：仍然正确隐藏/恢复；两屏桌面验证 PASS。
+- 双屏 wallpaper/Chrome overlay 数量恢复为 2。
+
+与上游对照：
+- 上游 `SetWebViewVisibility` 用 `hidden` 标记避免重复 `put_IsVisible`；Rust 之前没有等价缓存，已补上。
+- 上游全屏检测要求 `WS_OVERLAPPEDWINDOW`、无 owner、root、非 cloaked、覆盖工作区；Rust 版本更宽松，因此额外加了 Win11 shell 类名排除。没有直接照搬 `WS_OVERLAPPEDWINDOW`，是为了保留无边框全屏游戏/视频的检测。

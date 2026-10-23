@@ -65,6 +65,11 @@ struct MonitorSlot {
     /// Set by a ProcessFailed handler; the watchdog recreates the controller
     /// after this deadline so WebView2 has time to tear the old one down.
     recreate_after: Option<Instant>,
+    /// Last visibility applied to the controller/window. The watchdog runs
+    /// every 500ms; re-applying it makes the composition surface flash.
+    applied_visible: Option<bool>,
+    /// Last client size passed to the WebView controller.
+    applied_client: Option<(i32, i32)>,
 }
 
 impl MonitorSlot {
@@ -82,6 +87,8 @@ impl MonitorSlot {
             fullscreen: false,
             creating: false,
             recreate_after: None,
+            applied_visible: None,
+            applied_client: None,
         }
     }
 
@@ -91,6 +98,8 @@ impl MonitorSlot {
         }
         self.creating = false;
         self.recreate_after = None;
+        self.applied_visible = None;
+        self.applied_client = None;
     }
 
     fn close(&mut self) {
@@ -636,17 +645,38 @@ impl WallpaperState {
         let rect = self.slots[index].rect;
         let parent = self.slots[index].parent;
         let insert_after = self.slots[index].insert_after;
-        position_wallpaper(hwnd, parent, insert_after, rect)?;
 
-        // A controller may have been created while the host was hidden/0x0
-        // (Explorer restart path). Re-sync its bounds after the window settles.
-        if let Some(webview) = &self.slots[index].webview
-            && let Err(err) = webview.resize(hwnd)
-        {
-            warn!(
-                "could not resize wallpaper WebView for {}: {err:?}",
-                self.slots[index].device_name
-            );
+        // Re-running SetWindowPos every watchdog tick re-composites a layered
+        // window and shows up as a flash. Only touch it when geometry or the
+        // z-order sibling actually changed.
+        let mut current = RECT::default();
+        let geometry_ok = unsafe { GetWindowRect(hwnd, &mut current) }.is_ok() && current == rect;
+        let z_ok = insert_after.map_or(true, |expected| {
+            (unsafe { GetWindow(hwnd, GW_HWNDPREV).ok() }) == Some(expected)
+        });
+        if !geometry_ok || !z_ok {
+            position_wallpaper(hwnd, parent, insert_after, rect)?;
+        }
+
+        // Re-sync controller bounds only when the client size changed.
+        let mut client = RECT::default();
+        if unsafe { GetClientRect(hwnd, &mut client) }.is_ok() {
+            let size = (client.right, client.bottom);
+            if self.slots[index].applied_client != Some(size) {
+                let resized = self.slots[index]
+                    .webview
+                    .as_ref()
+                    .map(|webview| webview.resize(hwnd));
+                if let Some(result) = resized {
+                    match result {
+                        Ok(()) => self.slots[index].applied_client = Some(size),
+                        Err(err) => warn!(
+                            "could not resize wallpaper WebView for {}: {err:?}",
+                            self.slots[index].device_name
+                        ),
+                    }
+                }
+            }
         }
         Ok(())
     }
@@ -766,16 +796,25 @@ impl WallpaperState {
                 && slot.webview.is_some()
                 && !slot.hwnd.is_invalid();
 
+            if slot.applied_visible == Some(visible) {
+                continue;
+            }
+
+            let mut applied = true;
             if let Some(webview) = &slot.webview
                 && let Err(err) = webview.set_visible(visible)
             {
                 warn!("could not set wallpaper visibility: {err:?}");
+                applied = false;
             }
 
             if !slot.hwnd.is_invalid() {
                 unsafe {
                     let _ = ShowWindow(slot.hwnd, if visible { SW_SHOW } else { SW_HIDE });
                 }
+            }
+            if applied {
+                slot.applied_visible = Some(visible);
             }
         }
     }
@@ -991,9 +1030,9 @@ fn position_wallpaper(
         let height = (rect.bottom - rect.top).max(1);
 
         let flags = if insert_after.is_some() {
-            SWP_NOACTIVATE | SWP_SHOWWINDOW
+            SWP_NOACTIVATE
         } else {
-            SWP_NOACTIVATE | SWP_NOZORDER | SWP_SHOWWINDOW
+            SWP_NOACTIVATE | SWP_NOZORDER
         };
         SetWindowPos(hwnd, insert_after, x, y, width, height, flags)?;
 
@@ -1003,15 +1042,7 @@ fn position_wallpaper(
                 debug!(
                     "wallpaper z-order mismatch: prev={previous:?}, expected={expected:?}; reinserting"
                 );
-                SetWindowPos(
-                    hwnd,
-                    Some(expected),
-                    x,
-                    y,
-                    width,
-                    height,
-                    SWP_NOACTIVATE | SWP_SHOWWINDOW,
-                )?;
+                SetWindowPos(hwnd, Some(expected), x, y, width, height, SWP_NOACTIVATE)?;
             }
         }
     }
@@ -1491,6 +1522,7 @@ fn is_fullscreen(monitor_rect: RECT) -> bool {
             || class_name.starts_with("Chrome_RenderWidgetHostHWND")
             || class_name.starts_with("WebView2")
             || class_name.starts_with("ShellHandwritingCanvas")
+            || class_name.starts_with("XamlExplorerHost")
             || class_name.ends_with("OverlayWindow")
         {
             return true.into();
