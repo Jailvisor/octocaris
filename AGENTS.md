@@ -124,6 +124,7 @@ octos-rs/
 
 - **UI 线程是唯一 STA 线程**：所有 HWND、WebView2 controller、DComp 对象、托盘、钩子都在这里创建和释放。不要跨线程持有 COM 指针。
 - **watchdog 必须幂等**：每 500ms 只检查状态；`SetWindowPos`、controller `SetBounds`、DComp commit、`SetIsVisible` 只在几何/尺寸/可见性真正变化时调用，否则分层壁纸会闪。
+- **壁纸窗口永远不能在图标层上方**：`SendMouseInput` 会抬起 host HWND；壁纸窗口过程必须拦截 `WM_WINDOWPOSCHANGING`，把 `insert_after` 强制为 `SHELLDLL_DefView`。z-order 校验用从 DefView 沿 `GW_HWNDNEXT` 的链查找，不要要求直接相邻。
 - **后台线程**只做 prefs 写盘、下载；M6 再加媒体/音频。结果通过 `crossbeam-channel` + `PostMessageW(WM_APP_WAKE)` 回 UI 线程。
 - **WebView2 异步状态机**：`Empty -> EnvPending -> ControllerCreating -> Ready/Failed`。不要阻塞 UI 线程等待环境创建。每个窗口槽位带 generation，已销毁窗口的迟到回调直接丢弃；销毁前先 `Controller.Close()`。
 - **显示器按设备名 `\\.\DISPLAYn` 关联**，`HMONITOR`/矩形只做辅助。reconcile 必须**先**按设备名匹配所有显示器，**再**用矩形兜底，否则主屏切换时会抢走其他屏的槽位。禁止用 vector 索引对应窗口和显示器。

@@ -657,6 +657,9 @@ impl WallpaperState {
                 "repositioning wallpaper for {} (geometry_ok={geometry_ok}, z_ok={z_ok})",
                 self.slots[index].device_name
             );
+            if !z_ok {
+                debug_z_order(&self.slots[index].device_name, hwnd, insert_after);
+            }
             position_wallpaper(hwnd, parent, insert_after, rect)?;
         }
 
@@ -957,6 +960,36 @@ unsafe extern "system" fn wallpaper_wndproc(
 ) -> LRESULT {
     match message {
         WM_ERASEBKGND => LRESULT(1),
+        WM_WINDOWPOSCHANGING => {
+            // WebView2 raises its host HWND when SendMouseInput receives a
+            // click. Our wallpaper must stay below SHELLDLL_DefView, so force
+            // any z-order change back to the sibling we attached under.
+            if lparam.0 != 0 {
+                let pos = &mut *(lparam.0 as *mut WINDOWPOS);
+                let expected = with_state(|state| {
+                    state
+                        .slots
+                        .iter()
+                        .find(|slot| slot.hwnd == hwnd)
+                        .and_then(|slot| slot.insert_after)
+                })
+                .flatten()
+                .filter(|window| {
+                    !window.is_invalid() && unsafe { IsWindow(Some(*window)).as_bool() }
+                });
+                if let Some(expected) = expected
+                    && pos.hwndInsertAfter != expected
+                {
+                    debug!(
+                        "keeping wallpaper {hwnd:?} below {expected:?} (requested {:?})",
+                        pos.hwndInsertAfter
+                    );
+                    pos.hwndInsertAfter = expected;
+                    pos.flags = SET_WINDOW_POS_FLAGS(pos.flags.0 & !SWP_NOZORDER.0);
+                }
+            }
+            LRESULT(0)
+        }
         _ => DefWindowProcW(hwnd, message, wparam, lparam),
     }
 }
@@ -1064,6 +1097,36 @@ fn rects_overlap(a: RECT, b: RECT) -> bool {
     a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom
 }
 
+fn debug_z_order(device: &str, hwnd: HWND, expected: Option<HWND>) {
+    let parent = unsafe { GetAncestor(hwnd, GA_PARENT) };
+    let previous = unsafe { GetWindow(hwnd, GW_HWNDPREV).ok() };
+    let next = unsafe { GetWindow(hwnd, GW_HWNDNEXT).ok() };
+    debug!(
+        "z-debug {device}: hwnd={hwnd:?} parent={parent:?}({}) prev={previous:?}({}) next={next:?}({})",
+        window_class_name(parent),
+        previous.map(window_class_name).unwrap_or_default(),
+        next.map(window_class_name).unwrap_or_default()
+    );
+    if let Some(expected) = expected {
+        let mut current = expected;
+        let mut chain = Vec::new();
+        for _ in 0..16 {
+            let Some(next) = (unsafe { GetWindow(current, GW_HWNDNEXT).ok() }) else {
+                break;
+            };
+            if next.is_invalid() {
+                break;
+            }
+            chain.push(format!("{next:?}({})", window_class_name(next)));
+            if next == hwnd {
+                break;
+            }
+            current = next;
+        }
+        debug!("z-debug {device}: chain from {expected:?}: {chain:?}");
+    }
+}
+
 /// True when `hwnd` is somewhere below `expected` in the z-order chain.
 ///
 /// This mirrors upstream `FixWallpaperOrder`: walk `GW_HWNDNEXT` from
@@ -1100,6 +1163,11 @@ fn window_class_name(hwnd: HWND) -> String {
 
 unsafe extern "system" fn mouse_hook(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
     if code != HC_ACTION as i32 {
+        return CallNextHookEx(None, code, wparam, lparam);
+    }
+    // Diagnostic escape hatch: OCTOS_DISABLE_MOUSE_FORWARD=1 keeps the hook
+    // installed but stops SendMouseInput, useful when isolating z-order issues.
+    if std::env::var_os("OCTOS_DISABLE_MOUSE_FORWARD").is_some() {
         return CallNextHookEx(None, code, wparam, lparam);
     }
 
