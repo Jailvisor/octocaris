@@ -54,7 +54,8 @@
 | 项 | Upstream | Rust | 理由 |
 |---|---|---|---|
 | 桌面 App UI | vanilla HTML/CSS/JS，DOM 即状态 | React 19 + TS + Vite + 类型化 IPC | 现代化、可维护；App 窗口内部协议不属于 mod 契约 |
-| 显示器关联 | vector 索引 | 设备名 `\\.\DISPLAYn` + rect 兜底 | 修复热插拔/重排错位 |
+| 显示器关联 | vector 索引 | 设备名 `\\.\DISPLAYn` 优先两遍匹配 + rect 兜底 | 修复热插拔/主屏切换抢槽位 |
+| 热插拔 | 只向 UI 发 monitor-ids | reconcile + 恢复/默认分配 + Library 快照推送 | UI 与新显示器立即一致 |
 | WebView2 初始化 | 阻塞等待环境 | 异步状态机 + generation | 避免 UI 线程卡死 |
 | prefs | 非原子写 | 原子 replace + `.bak` + 损坏隔离；250ms debounce + 退出 flush | 防数据丢失/减少滑块写盘 |
 | 沙箱 | `enableSandboxing` 取反 | 默认启用；不传 `--no-sandbox` | 修复旧 bug |

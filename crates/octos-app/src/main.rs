@@ -122,6 +122,9 @@ fn run(paths: Paths) -> Result<()> {
         }
     });
 
+    let display_paths = paths.clone();
+    octos_win::set_display_change_handler(move || handle_display_change(&display_paths));
+
     let command_paths = paths.clone();
     octos_win::set_command_handler(move |line| {
         let args = octos_win::split_command_line(line);
@@ -609,6 +612,94 @@ fn flush_preferences(paths: &Paths) {
     }
 }
 
+fn stored_options(folder: &str) -> Option<OptionsMap> {
+    PREFERENCES
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .as_ref()
+        .and_then(|preferences| preferences.options_for(folder).cloned())
+}
+
+fn default_wallpaper(paths: &Paths) -> (String, String, OptionsMap) {
+    let folder = std::env::var("OCTOS_TEST_MOD_FOLDER").unwrap_or_else(|_| "gradient".to_string());
+    let folder_path = paths.wallpapers.join(&folder);
+    let manifest = ModManifest::load(&folder_path).ok();
+    let key = folder_path.to_string_lossy().to_string();
+    let entry = manifest
+        .as_ref()
+        .and_then(ModManifest::entry_url)
+        .unwrap_or_else(|| format!("https://local.octos/{folder}/index.html"));
+    let options = manifest
+        .map(|manifest| manifest.options)
+        .unwrap_or_default();
+    (key, entry, options)
+}
+
+fn apply_monitor_mod(paths: &Paths, monitor: &str, folder: Option<&str>) -> anyhow::Result<()> {
+    if let Some(folder) = folder
+        && let Some((entry, defaults)) = resolved_mod(paths, folder)
+    {
+        octos_win::wallpaper::set_monitor_mod_with(
+            monitor,
+            folder.to_string(),
+            entry,
+            defaults,
+            stored_options(folder),
+        )?;
+        return Ok(());
+    }
+
+    let (key, entry, options) = default_wallpaper(paths);
+    let stored = stored_options(&key);
+    octos_win::wallpaper::set_monitor_mod_with(monitor, key, entry, options, stored)?;
+    Ok(())
+}
+
+fn push_library(paths: &Paths) {
+    if let Ok(snapshot) = library_snapshot(paths)
+        && let Ok(payload) = serde_json::to_string(&serde_json::json!({
+            "type": "library",
+            "data": snapshot,
+        }))
+    {
+        octos_win::post_to_main_webview(&payload);
+    }
+}
+
+/// A monitor was added, removed or moved. Reconcile already rebuilt the slots;
+/// here we restore saved selections and give brand-new monitors a wallpaper
+/// (the primary display's mod, or the built-in gradient).
+fn handle_display_change(paths: &Paths) {
+    if !WALLPAPERS_READY.load(Ordering::SeqCst) {
+        return;
+    }
+    let monitors = octos_win::wallpaper::monitor_ids();
+    let selected = octos_win::wallpaper::selected_monitors();
+    let fallback = octos_win::wallpaper::primary_monitor_id()
+        .and_then(|monitor| selected.get(&monitor).cloned())
+        .or_else(|| selected.values().next().cloned());
+
+    let mut changed = false;
+    for monitor in &monitors {
+        if octos_win::wallpaper::monitor_has_wallpaper(monitor) {
+            continue;
+        }
+        let folder = selected.get(monitor).cloned().or_else(|| fallback.clone());
+        match apply_monitor_mod(paths, monitor, folder.as_deref()) {
+            Ok(()) => {
+                changed = true;
+                info!("assigned wallpaper on {monitor} after a display change");
+            }
+            Err(err) => warn!("could not assign wallpaper on {monitor}: {err:?}"),
+        }
+    }
+
+    if changed {
+        save_preferences(paths);
+    }
+    push_library(paths);
+}
+
 fn resolved_mod(paths: &Paths, folder_path: &str) -> Option<(String, OptionsMap)> {
     let report = catalog::scan(&paths.wallpapers).ok()?;
     let card = report
@@ -709,7 +800,8 @@ fn library_snapshot(paths: &Paths) -> anyhow::Result<serde_json::Value> {
         }
     }
     let monitors = octos_win::wallpaper::monitor_ids();
-    let selected = octos_win::wallpaper::selected_monitors();
+    let mut selected = octos_win::wallpaper::selected_monitors();
+    selected.retain(|monitor, _| monitors.contains(monitor));
     info!(
         "library snapshot: {} mod(s), monitors={monitors:?}, selected={selected:?}",
         mods.len()

@@ -45,11 +45,13 @@ const DESKTOP_CLASSES: [&str; 4] = ["SysListView32", "SHELLDLL_DefView", "Progma
 struct MonitorInfo {
     device_name: String,
     rect: RECT,
+    primary: bool,
 }
 
 struct MonitorSlot {
     device_name: String,
     rect: RECT,
+    primary: bool,
     hwnd: HWND,
     parent: HWND,
     insert_after: Option<HWND>,
@@ -57,16 +59,20 @@ struct MonitorSlot {
     entry_url: Option<String>,
     user_visible: bool,
     fullscreen: bool,
+    /// A controller create call is in flight; another reconcile must not start
+    /// a second composition target on the same HWND.
+    creating: bool,
     /// Set by a ProcessFailed handler; the watchdog recreates the controller
     /// after this deadline so WebView2 has time to tear the old one down.
     recreate_after: Option<Instant>,
 }
 
 impl MonitorSlot {
-    fn new(device_name: String, rect: RECT) -> Self {
+    fn new(device_name: String, rect: RECT, primary: bool) -> Self {
         Self {
             device_name,
             rect,
+            primary,
             hwnd: HWND::default(),
             parent: HWND::default(),
             insert_after: None,
@@ -74,6 +80,7 @@ impl MonitorSlot {
             entry_url: None,
             user_visible: true,
             fullscreen: false,
+            creating: false,
             recreate_after: None,
         }
     }
@@ -82,6 +89,7 @@ impl MonitorSlot {
         if let Some(webview) = self.webview.take() {
             webview.close();
         }
+        self.creating = false;
         self.recreate_after = None;
     }
 
@@ -295,6 +303,30 @@ pub fn monitor_ids() -> Vec<String> {
     .unwrap_or_default()
 }
 
+pub fn primary_monitor_id() -> Option<String> {
+    with_state(|state| {
+        state
+            .slots
+            .iter()
+            .find(|slot| slot.primary)
+            .map(|slot| slot.device_name.clone())
+    })
+    .flatten()
+}
+
+/// True once a slot has an entry URL. A slot created by a display change has
+/// none until the app assigns the saved or default wallpaper.
+pub fn monitor_has_wallpaper(monitor_id: &str) -> bool {
+    with_state(|state| {
+        state
+            .slots
+            .iter()
+            .find(|slot| slot.device_name == monitor_id)
+            .is_some_and(|slot| slot.entry_url.is_some())
+    })
+    .unwrap_or(false)
+}
+
 pub fn selected_monitors() -> BTreeMap<String, String> {
     with_state(|state| state.session.selected().clone()).unwrap_or_default()
 }
@@ -445,30 +477,49 @@ fn slot_count() -> usize {
 impl WallpaperState {
     fn reconcile(&mut self) -> Result<()> {
         let monitors = enumerate_monitors();
-        let mut next = Vec::with_capacity(monitors.len());
+        let mut old: Vec<Option<MonitorSlot>> = std::mem::take(&mut self.slots)
+            .into_iter()
+            .map(Some)
+            .collect();
+        let mut chosen: Vec<Option<MonitorSlot>> = (0..monitors.len()).map(|_| None).collect();
 
-        for monitor in monitors {
-            let existing = self
-                .slots
-                .iter()
-                .position(|slot| slot.device_name == monitor.device_name)
-                .or_else(|| {
-                    self.slots
-                        .iter()
-                        .position(|slot| rects_overlap(slot.rect, monitor.rect))
-                });
-
-            let mut slot = match existing {
-                Some(index) => self.slots.remove(index),
-                None => MonitorSlot::new(monitor.device_name.clone(), monitor.rect),
-            };
-            slot.device_name = monitor.device_name;
-            slot.rect = monitor.rect;
-            next.push(slot);
+        // Device names are the stable identity, so resolve every exact match
+        // before the rectangle fallback. The old single-pass loop let a
+        // renamed/primary display steal another display's slot and name.
+        for (monitor_index, monitor) in monitors.iter().enumerate() {
+            if let Some(slot_index) = old.iter().position(|slot| {
+                slot.as_ref()
+                    .is_some_and(|slot| slot.device_name == monitor.device_name)
+            }) {
+                chosen[monitor_index] = old[slot_index].take();
+            }
         }
 
-        for mut removed in self.slots.drain(..) {
+        for (monitor_index, monitor) in monitors.iter().enumerate() {
+            if chosen[monitor_index].is_some() {
+                continue;
+            }
+            if let Some(slot_index) = old.iter().position(|slot| {
+                slot.as_ref()
+                    .is_some_and(|slot| rects_overlap(slot.rect, monitor.rect))
+            }) {
+                chosen[monitor_index] = old[slot_index].take();
+            }
+        }
+
+        for mut removed in old.into_iter().flatten() {
             removed.close();
+        }
+
+        let mut next = Vec::with_capacity(monitors.len());
+        for (monitor_index, monitor) in monitors.into_iter().enumerate() {
+            let mut slot = chosen[monitor_index].take().unwrap_or_else(|| {
+                MonitorSlot::new(monitor.device_name.clone(), monitor.rect, monitor.primary)
+            });
+            slot.device_name = monitor.device_name;
+            slot.rect = monitor.rect;
+            slot.primary = monitor.primary;
+            next.push(slot);
         }
         self.slots = next;
 
@@ -612,7 +663,7 @@ impl WallpaperState {
                 self.slots[index].device_name
             );
         }
-        if self.slots[index].webview.is_some() {
+        if self.slots[index].webview.is_some() || self.slots[index].creating {
             return Ok(());
         }
 
@@ -635,7 +686,8 @@ impl WallpaperState {
         let loaded_device = device_name.clone();
         let failed_device = device_name.clone();
 
-        dcomp.create_wallpaper_controller(
+        self.slots[index].creating = true;
+        let created = dcomp.create_wallpaper_controller(
             &environment,
             hwnd,
             wallpapers_dir,
@@ -670,6 +722,7 @@ impl WallpaperState {
                             .find(|slot| slot.device_name == device_name && slot.hwnd == hwnd)
                         {
                             slot.webview = Some(webview);
+                            slot.creating = false;
                             slot.recreate_after = None;
                             true
                         } else {
@@ -689,12 +742,18 @@ impl WallpaperState {
                             .iter_mut()
                             .find(|slot| slot.device_name == device_name && slot.hwnd == hwnd)
                         {
+                            slot.creating = false;
                             slot.recreate_after = Some(Instant::now() + Duration::from_secs(1));
                         }
                     });
                 }
             },
-        )?;
+        );
+        if let Err(err) = created {
+            self.slots[index].creating = false;
+            self.slots[index].recreate_after = Some(Instant::now() + Duration::from_secs(1));
+            return Err(err);
+        }
         Ok(())
     }
 
@@ -780,6 +839,7 @@ unsafe extern "system" fn monitor_callback(
         monitors.push(MonitorInfo {
             device_name,
             rect: info.monitorInfo.rcMonitor,
+            primary: info.monitorInfo.dwFlags & MONITORINFOF_PRIMARY != 0,
         });
     }
     true.into()
@@ -1429,6 +1489,7 @@ fn is_fullscreen(monitor_rect: RECT) -> bool {
         ) || class_name.starts_with("Chrome_WidgetWin_")
             || class_name.starts_with("Chrome_RenderWidgetHostHWND")
             || class_name.starts_with("WebView2")
+            || class_name.starts_with("ShellHandwritingCanvas")
             || class_name.ends_with("OverlayWindow")
         {
             return true.into();

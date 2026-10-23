@@ -64,6 +64,7 @@ struct WinState {
     drop_handler: Option<Rc<dyn Fn(Vec<PathBuf>)>>,
     command_handler: Option<Rc<dyn Fn(&str)>>,
     placement_handler: Option<Rc<dyn Fn(WindowPlacement)>>,
+    display_change_handler: Option<Rc<dyn Fn()>>,
 }
 
 thread_local! {
@@ -314,6 +315,12 @@ pub fn create_main_window(saved: Option<WindowPlacement>) -> Result<HWND> {
         info!("main window created: {hwnd:?}");
         Ok(hwnd)
     }
+}
+
+/// Register a callback that runs after a display topology change has been
+/// reconciled (monitors added/removed/rearranged).
+pub fn set_display_change_handler(handler: impl Fn() + 'static) {
+    let _ = with_state(|state| state.display_change_handler = Some(Rc::new(handler)));
 }
 
 /// Receive the main window's normal (non-maximized) rectangle as it moves or
@@ -583,6 +590,10 @@ unsafe extern "system" fn wndproc(
         }
         WM_DISPLAYCHANGE => {
             wallpaper::reconcile_now();
+            let handler = with_state(|state| state.display_change_handler.clone());
+            if let Some(handler) = handler {
+                handler();
+            }
             LRESULT(0)
         }
         WM_DROPFILES => {

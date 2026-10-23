@@ -94,7 +94,7 @@ z-order 说明：退出全屏后，WebView2 `Chrome_WidgetWin_1` 与 Progman 之
 
 - 代码项全部完成：prefs 写盘硬化、ProcessFailed 恢复、真实全屏门控、Explorer 重启恢复、桌面矩阵、窗口位置。
 - DPI：UI 在 100% / 150% / 200% 均有截图或实机证据；桌面层级检查在 200% 完成。
-- **多显示器 / `redirect` / 热插拔**按用户决定推迟到后续阶段。
+- **多显示器 / `redirect` / 热插拔**已完成基础链路实测，见 `docs/multimonitor.md`；每屏 localStorage 隔离待做。
 - 100%/150% 下的桌面层级若要补齐，需要保持对应缩放后再跑一次 `verify-desktop.ps1`。
 
 ## 当前测试

@@ -37,10 +37,12 @@ Add-Type @'
 using System;
 using System.Text;
 using System.Diagnostics;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
 
 public class OctosDesktopCheck {
     public delegate bool EnumProc(IntPtr h, IntPtr l);
+    public delegate bool MonitorProc(IntPtr hMon, IntPtr hdc, ref RECT rect, IntPtr data);
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern IntPtr FindWindowW(string c, string n);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern IntPtr FindWindowExW(IntPtr p, IntPtr a, string c, string n);
@@ -55,6 +57,7 @@ public class OctosDesktopCheck {
     [DllImport("user32.dll")] static extern IntPtr GetWindow(IntPtr h, uint f);
     [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
     [DllImport("user32.dll")] static extern int GetSystemMetrics(int index);
+    [DllImport("user32.dll")] static extern bool EnumDisplayMonitors(IntPtr hdc, IntPtr clip, MonitorProc cb, IntPtr data);
 
     [StructLayout(LayoutKind.Sequential)]
     public struct RECT { public int L, T, R, B; }
@@ -63,6 +66,9 @@ public class OctosDesktopCheck {
     static bool wallpaperVisible = false;
     static bool mainVisible = false;
     static bool mainMinimized = false;
+    static List<RECT> monitorRects = new List<RECT>();
+    static List<RECT> wallpaperRects = new List<RECT>();
+    static List<RECT> webviewOverlayRects = new List<RECT>();
 
     static string Cls(IntPtr h) {
         var b = new StringBuilder(256);
@@ -100,17 +106,38 @@ public class OctosDesktopCheck {
         return (ex & 0x00080000) != 0 && (ex & 0x00000020) != 0;
     }
 
-    // Hidden IME/helper windows can sit between the WebView2 host and Progman
-    // without affecting what the user sees. Walk down through invisible windows
-    // and fail only if a visible window is above the desktop.
+    // Hidden IME/helper windows and the other monitor's WebView2 host can sit
+    // between this overlay and Progman without affecting what the user sees.
+    // Walk down and fail only if a visible, non-WebView2 window is above the
+    // desktop.
     static bool ReachesProgman(IntPtr h, IntPtr progman) {
-        for (int i = 0; i < 16; i++) {
+        for (int i = 0; i < 32; i++) {
             h = GetWindow(h, 2);
             if (h == IntPtr.Zero) { return false; }
             if (h == progman) { return true; }
-            if (IsWindowVisible(h)) { return false; }
+            string c = Cls(h);
+            if (IsWindowVisible(h) && !c.StartsWith("Chrome_WidgetWin_")) {
+                RECT r; GetWindowRect(h, out r);
+                // The taskbar/IME helpers are visible but do not cover a monitor;
+                // a visible full-monitor window above the desktop does.
+                if (CoversAnyMonitor(r)) { return false; }
+            }
         }
         return false;
+    }
+
+    static bool MonitorCallback(IntPtr hMon, IntPtr hdc, ref RECT rect, IntPtr data) {
+        monitorRects.Add(rect);
+        return true;
+    }
+
+    static bool SameRect(RECT a, RECT b) {
+        return Math.Abs(a.L - b.L) <= 2 && Math.Abs(a.T - b.T) <= 2 &&
+               Math.Abs(a.R - b.R) <= 2 && Math.Abs(a.B - b.B) <= 2;
+    }
+
+    static bool CoversAnyMonitor(RECT r) {
+        return monitorRects.Exists(m => SameRect(r, m));
     }
 
     static void Walk(IntPtr h) {
@@ -134,6 +161,7 @@ public class OctosDesktopCheck {
             IntPtr prev = GetWindow(h, 3);
             IntPtr next = GetWindow(h, 2);
             wallpaperVisible = IsWindowVisible(h);
+            RECT wr; GetWindowRect(h, out wr); wallpaperRects.Add(wr);
             bool below = Cls(prev) == "SHELLDLL_DefView";
             if (below) {
                 wallpaperBelowIcons = true;
@@ -167,6 +195,9 @@ public class OctosDesktopCheck {
 
         int screenWidth = GetSystemMetrics(0);
         int screenHeight = GetSystemMetrics(1);
+        monitorRects.Clear();
+        EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, MonitorCallback, IntPtr.Zero);
+        Console.WriteLine("Monitors=" + monitorRects.Count);
         int chromeOverlays = 0;
         int otherChromeWindows = 0;
         int chromeNextProgman = 0;
@@ -181,7 +212,7 @@ public class OctosDesktopCheck {
 
             RECT r;
             GetWindowRect(h, out r);
-            bool fullScreen = r.L <= 2 && r.T <= 2 && r.R >= screenWidth - 2 && r.B >= screenHeight - 2;
+            bool fullScreen = CoversAnyMonitor(r);
             if (!fullScreen) {
                 return true;
             }
@@ -193,7 +224,7 @@ public class OctosDesktopCheck {
             bool immediateProgman = next == progman;
             bool nextProgman = ReachesProgman(h, progman);
             bool layeredTransparent = LayeredTransparent(h);
-            if (isWebView2) { chromeOverlays++; } else { otherChromeWindows++; }
+            if (isWebView2) { chromeOverlays++; webviewOverlayRects.Add(r); } else { otherChromeWindows++; }
             if (isWebView2 && nextProgman) { chromeNextProgman++; }
             if (isWebView2 && layeredTransparent) { chromeLayeredTransparent++; }
 
@@ -211,8 +242,18 @@ public class OctosDesktopCheck {
             return true;
         }, IntPtr.Zero);
 
+        int wallpaperMonitors = 0;
+        int chromeMonitors = 0;
+        foreach (RECT m in monitorRects) {
+            if (wallpaperRects.Exists(w => SameRect(w, m))) { wallpaperMonitors++; }
+            if (webviewOverlayRects.Exists(o => SameRect(o, m))) { chromeMonitors++; }
+        }
+
         Console.WriteLine(
-            "SUMMARY iconsVisible=" + iconsVisible +
+            "SUMMARY monitors=" + monitorRects.Count +
+            " wallpaperMonitors=" + wallpaperMonitors +
+            " chromeMonitors=" + chromeMonitors +
+            " iconsVisible=" + iconsVisible +
             " wallpaperBelowIcons=" + wallpaperBelowIcons +
             " wallpaperVisible=" + wallpaperVisible +
             " mainVisible=" + mainVisible +
@@ -224,6 +265,10 @@ public class OctosDesktopCheck {
 
         if (!iconsVisible || (wallpaperVisible && !wallpaperBelowIcons)) {
             Console.WriteLine("WARN: expected iconsVisible=True and (when visible) wallpaperBelowIcons=True.");
+        } else if (wallpaperVisible && wallpaperMonitors < monitorRects.Count) {
+            Console.WriteLine("WARN: not every monitor has an Octos wallpaper window.");
+        } else if (wallpaperVisible && chromeMonitors < monitorRects.Count) {
+            Console.WriteLine("WARN: not every monitor has a full-size WebView2 Chrome host.");
         } else if (wallpaperVisible && chromeOverlays == 0) {
             Console.WriteLine("WARN: wallpaper window is visible but no full-screen WebView2 Chrome host exists;");
             Console.WriteLine("      the gradient may not render (controller/bounds lifecycle issue).");
