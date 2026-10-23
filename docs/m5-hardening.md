@@ -24,12 +24,35 @@
 4. 通过托盘 Quit（`WM_COMMAND` id=2）退出：01:34:47.242Z 再写一次最终快照，进程正常结束。
 5. `data` 根目录无 `.tmp-*` 残留。
 
-## 剩余 M5 项
+## 已完成：ProcessFailed renderer 恢复
 
-1. 多显示器 / 按显示器设置 / `redirect` / 热插拔（当前环境只有 DISPLAY1）。
-2. 真实游戏/视频全屏回归（现有边框全屏窗口证据见 M2）。
-3. ProcessFailed renderer 崩溃恢复。
-4. Explorer 重启、DPI 100/150/200% 的完整回归矩阵复核。
+- 主 UI：注册 `ProcessFailed`，记录 kind 后对主 WebView 调 `Reload()`。
+- 壁纸：`ProcessFailed` 只给槽位设置 `recreate_after = now + 1s`；watchdog 到期后关闭旧 controller 并重新创建，避免在 WebView2 事件回调里重入销毁。
+- controller 重建失败时同样设 1s 重试，不会每 500ms 刷屏。
+- 兼容性：主 UI 与壁纸使用同一环境；renderer 退出后 WebView2 会自动拉起新 renderer，再重建 controller。
+
+实机验证（杀 `msedgewebview2.exe` renderer）：
+
+| 目标 | 结果 |
+|---|---|
+| 主 UI renderer（PID 9456） | 日志 `main WebView2 process failed (Some(COREWEBVIEW2_PROCESS_FAILED_KIND(1))); reloading`，随后 UI 重新发 `get-library` |
+| 壁纸 renderer（PID 21448） | 日志 `wallpaper process failed for \\.\DISPLAY1 (kind=1)` → 1 秒后 `recreating wallpaper WebView` → `wallpaper controller ready` |
+| 恢复后桌面 | `verify-desktop.ps1` PASS：图标可见、壁纸在图标层下、Chrome 覆盖层 layered+transparent |
+
+## 已完成：全屏回归（边框全屏窗口）
+
+`scripts/fullscreen-probe.ps1`（2880×1800 物理 / 200% DPI）：
+
+- 全屏窗口打开：`OctosWallpaperWindow visible=False`，日志 `monitor \\.\DISPLAY1 fullscreen=true`。
+- 关闭后：`visible=True`，日志 `fullscreen=false`。
+- 结论：全屏门控与恢复通过。
+
+## 剩余 M5 项（需要人工/环境配合）
+
+1. **Explorer 重启**：需要用户同意后执行（会短暂重建桌面）。
+2. **DPI 100% / 150%**：需要用户切换 Windows 缩放；当前环境为 200%，已覆盖 200%。
+3. **真实游戏/视频全屏**：需要启动真实应用；边框全屏窗口已通过。
+4. **多显示器 / `redirect` / 热插拔**：按用户决定另说。
 
 ## 当前测试
 

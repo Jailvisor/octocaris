@@ -4,6 +4,7 @@ use std::cell::RefCell;
 use std::collections::{BTreeMap, HashSet};
 use std::mem::size_of;
 use std::path::PathBuf;
+use std::time::{Duration, Instant};
 
 use anyhow::{Result, anyhow};
 use octos_core::hooks::{HookEvent, scripts_for_event};
@@ -56,6 +57,9 @@ struct MonitorSlot {
     entry_url: Option<String>,
     user_visible: bool,
     fullscreen: bool,
+    /// Set by a ProcessFailed handler; the watchdog recreates the controller
+    /// after this deadline so WebView2 has time to tear the old one down.
+    recreate_after: Option<Instant>,
 }
 
 impl MonitorSlot {
@@ -70,6 +74,7 @@ impl MonitorSlot {
             entry_url: None,
             user_visible: true,
             fullscreen: false,
+            recreate_after: None,
         }
     }
 
@@ -77,6 +82,7 @@ impl MonitorSlot {
         if let Some(webview) = self.webview.take() {
             webview.close();
         }
+        self.recreate_after = None;
     }
 
     fn close(&mut self) {
@@ -595,6 +601,17 @@ impl WallpaperState {
     }
 
     fn ensure_webview(&mut self, index: usize) -> Result<()> {
+        if let Some(retry_after) = self.slots[index].recreate_after {
+            if Instant::now() < retry_after {
+                return Ok(());
+            }
+            self.slots[index].recreate_after = None;
+            self.slots[index].close_webview();
+            info!(
+                "recreating wallpaper WebView for {} after a process failure",
+                self.slots[index].device_name
+            );
+        }
         if self.slots[index].webview.is_some() {
             return Ok(());
         }
@@ -616,6 +633,7 @@ impl WallpaperState {
         let wallpapers_dir = self.wallpapers_dir.clone();
         let message_device = device_name.clone();
         let loaded_device = device_name.clone();
+        let failed_device = device_name.clone();
 
         dcomp.create_wallpaper_controller(
             &environment,
@@ -628,6 +646,21 @@ impl WallpaperState {
             move |webview| {
                 handle_wallpaper_loaded(&loaded_device, webview);
             },
+            move |_webview, kind| {
+                warn!(
+                    "wallpaper process failed for {failed_device} (kind={})",
+                    kind.0
+                );
+                let _ = with_state(|state| {
+                    if let Some(slot) = state
+                        .slots
+                        .iter_mut()
+                        .find(|slot| slot.device_name == failed_device)
+                    {
+                        slot.recreate_after = Some(Instant::now() + Duration::from_secs(1));
+                    }
+                });
+            },
             move |result| match result {
                 Ok(webview) => {
                     let installed = with_state(|state| {
@@ -637,6 +670,7 @@ impl WallpaperState {
                             .find(|slot| slot.device_name == device_name && slot.hwnd == hwnd)
                         {
                             slot.webview = Some(webview);
+                            slot.recreate_after = None;
                             true
                         } else {
                             false
@@ -647,7 +681,18 @@ impl WallpaperState {
                         warn!("wallpaper controller finished for a vanished monitor");
                     }
                 }
-                Err(err) => warn!("wallpaper controller failed for {device_name}: {err:?}"),
+                Err(err) => {
+                    warn!("wallpaper controller failed for {device_name}: {err:?}");
+                    let _ = with_state(|state| {
+                        if let Some(slot) = state
+                            .slots
+                            .iter_mut()
+                            .find(|slot| slot.device_name == device_name && slot.hwnd == hwnd)
+                        {
+                            slot.recreate_after = Some(Instant::now() + Duration::from_secs(1));
+                        }
+                    });
+                }
             },
         )?;
         Ok(())

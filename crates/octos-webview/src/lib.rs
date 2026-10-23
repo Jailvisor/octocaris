@@ -14,7 +14,7 @@ use tracing::{debug, info, warn};
 use webview2_com::{
     CoreWebView2EnvironmentOptions, CreateCoreWebView2CompositionControllerCompletedHandler,
     CreateCoreWebView2ControllerCompletedHandler, CreateCoreWebView2EnvironmentCompletedHandler,
-    Microsoft::Web::WebView2::Win32::*, NavigationCompletedEventHandler,
+    Microsoft::Web::WebView2::Win32::*, NavigationCompletedEventHandler, ProcessFailedEventHandler,
     WebMessageReceivedEventHandler, take_pwstr,
 };
 use windows::Win32::Foundation::{HMODULE, HWND, RECT};
@@ -154,6 +154,20 @@ pub fn create_main_controller(
                     controller.SetBounds(client)?;
                     controller.SetIsVisible(true)?;
                     webview.Navigate(PCWSTR::from_raw(url_wide.as_ptr()))?;
+
+                    let failed_handler =
+                        ProcessFailedEventHandler::create(Box::new(move |sender, args| {
+                            let kind = args.as_ref().map(process_failed_kind);
+                            warn!("main WebView2 process failed ({kind:?}); reloading");
+                            if let Some(sender) = sender
+                                && let Err(err) = sender.Reload()
+                            {
+                                warn!("could not reload the main WebView: {err:?}");
+                            }
+                            Ok(())
+                        }));
+                    let mut failed_token = 0i64;
+                    webview.add_ProcessFailed(&failed_handler, &mut failed_token)?;
                 }
 
                 info!("main WebView2 controller ready -> {startup_url}");
@@ -274,6 +288,16 @@ fn wide(value: &str) -> Vec<u16> {
     value.encode_utf16().chain(std::iter::once(0)).collect()
 }
 
+fn process_failed_kind(
+    args: &ICoreWebView2ProcessFailedEventArgs,
+) -> COREWEBVIEW2_PROCESS_FAILED_KIND {
+    let mut kind = COREWEBVIEW2_PROCESS_FAILED_KIND_UNKNOWN_PROCESS_EXITED;
+    unsafe {
+        let _ = args.ProcessFailedKind(&mut kind);
+    }
+    kind
+}
+
 fn wide_path(path: &Path) -> Vec<u16> {
     path.as_os_str()
         .encode_wide()
@@ -384,6 +408,7 @@ impl CompositionDevice {
         entry_url: String,
         mut on_message: impl FnMut(&ICoreWebView2, &str) + 'static,
         mut on_loaded: impl FnMut(&ICoreWebView2) + 'static,
+        mut on_process_failed: impl FnMut(&ICoreWebView2, COREWEBVIEW2_PROCESS_FAILED_KIND) + 'static,
         on_ready: impl FnOnce(Result<WallpaperWebView>) + 'static,
     ) -> Result<()> {
         let dcomp = self.device.clone();
@@ -463,6 +488,19 @@ impl CompositionDevice {
                         ));
                         let mut loaded_token = 0i64;
                         webview.add_NavigationCompleted(&loaded_handler, &mut loaded_token)?;
+
+                        let failed_handler =
+                            ProcessFailedEventHandler::create(Box::new(move |sender, args| {
+                                let kind = args.as_ref().map(process_failed_kind).unwrap_or(
+                                    COREWEBVIEW2_PROCESS_FAILED_KIND_UNKNOWN_PROCESS_EXITED,
+                                );
+                                if let Some(sender) = sender {
+                                    on_process_failed(&sender, kind);
+                                }
+                                Ok(())
+                            }));
+                        let mut failed_token = 0i64;
+                        webview.add_ProcessFailed(&failed_handler, &mut failed_token)?;
                         dcomp.Commit()?;
                     }
 

@@ -58,6 +58,7 @@
 | WebView2 初始化 | 阻塞等待环境 | 异步状态机 + generation | 避免 UI 线程卡死 |
 | prefs | 非原子写 | 原子 replace + `.bak` + 损坏隔离；250ms debounce + 退出 flush | 防数据丢失/减少滑块写盘 |
 | 沙箱 | `enableSandboxing` 取反 | 默认启用；不传 `--no-sandbox` | 修复旧 bug |
+| WebView2 进程失败 | 无处理 | 主 UI `Reload()`；壁纸 1s 后重建 controller | renderer 崩溃恢复 |
 | 日志 | 无控制台、无文件 | `tracing` 滚动文件 | 可诊断 |
 | 全屏检测 | 工作区+样式+owner+cloaked | 额外排除 `Chrome_WidgetWin_*`、`WebView2*`、`*OverlayWindow` | 避免 WebView2 自身窗口导致闪烁 |
 | z-order | 周期 watchdog 维护 | 显式校验 `parent`/`insert_after` 句柄 + `GW_HWNDPREV` | Explorer 重建句柄时不落到图标上方 |
