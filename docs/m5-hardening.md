@@ -59,12 +59,30 @@
 
 三种状态下壁纸都在 `SHELLDLL_DefView` 下方，Chrome 覆盖层保持 layered+transparent。
 
+## 已完成：Explorer 重启回归
+
+执行：`Stop-Process -Name explorer -Force`，Explorer 自动重启；等待 8 秒后运行 `verify-desktop.ps1`。
+
+- 02:16:30.212Z 首次 reconcile 出现一次 `could not prepare wallpaper window ... 类已存在 (0x80070582)`（Explorer 重建期间的瞬态）。
+- 02:16:30.738Z 下一 tick `desktop attach: Progman path`，壁纸控制器重新就绪。
+- 02:16:32.660Z `TaskbarCreated`，托盘图标重新添加。
+- 最终 `SUMMARY ... wallpaperVisible=True chromeNextProgman=1 chromeLayeredTransparent=1`，PASS。
+
+## DPI 回归
+
+| DPI | 证据 | 结果 |
+|---|---|---|
+| 100% | `E:\file\octos\m5-dpi-100.png`（用户截图，1920×1200 窗口） | UI 布局/字号/卡片正常，无裁切 |
+| 150% | `E:\file\octos\m5-dpi-150.png`（用户截图，2000×1250 窗口） | UI 按 1.5× 缩放，Library/详情/状态面板正常 |
+| 200% | `verify-desktop.ps1` + `m4-ui-*.png` | 桌面层级与壁纸渲染 PASS |
+
+**说明**：100%/150% 目前是 UI 截图证据；桌面层级检查（壁纸在图标层下、Chrome 覆盖层透明）只在 200% 实机跑过。若需要完整矩阵，请在 100% 或 150% 下停留并告知，我再跑 `verify-desktop.ps1`。
+
 ## 剩余 M5 项（需要人工/环境配合）
 
-1. **Explorer 重启**：需要用户同意后执行（会短暂重建桌面）。
-2. **DPI 100% / 150%**：需要用户切换 Windows 缩放；当前环境为 200%，已覆盖 200%。
-3. **真实游戏/视频全屏**：需要启动真实应用；边框全屏窗口已通过。
-4. **多显示器 / `redirect` / 热插拔**：按用户决定另说。
+1. 真实游戏/视频全屏：需要启动真实应用；边框全屏窗口已通过。
+2. 多显示器 / `redirect` / 热插拔：按用户决定另说。
+3. 100%/150% 下的桌面层级验证（如上，需要保持缩放）。
 
 ## 当前测试
 
