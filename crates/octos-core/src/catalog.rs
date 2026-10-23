@@ -1,0 +1,165 @@
+//! Scan the wallpapers directory into UI-facing mod cards.
+
+use std::path::{Path, PathBuf};
+
+use serde::{Deserialize, Serialize};
+use thiserror::Error;
+
+use crate::manifest::{ManifestError, ModManifest};
+use crate::options::OptionsMap;
+
+#[derive(Debug, Error)]
+pub enum CatalogError {
+    #[error("could not read wallpaper root {path}: {source}")]
+    Root {
+        path: PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
+    #[error("could not load {path}: {source}")]
+    Manifest {
+        path: PathBuf,
+        #[source]
+        source: ManifestError,
+    },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModCard {
+    pub folder_name: String,
+    pub folder_path: PathBuf,
+    pub name: String,
+    pub author: String,
+    pub description: String,
+    pub image_url: Option<String>,
+    pub entry_url: Option<String>,
+    pub authorsite: Option<String>,
+    pub source: Option<String>,
+    pub version: Option<String>,
+    pub keywords: Vec<String>,
+    pub options: OptionsMap,
+}
+
+impl ModCard {
+    pub fn from_manifest(manifest: ModManifest) -> Self {
+        Self {
+            folder_name: manifest.folder_name.clone(),
+            folder_path: manifest.folder.clone(),
+            name: manifest.name.clone(),
+            author: manifest.author().to_string(),
+            description: manifest.description().to_string(),
+            image_url: manifest.image_url(),
+            entry_url: manifest.entry_url(),
+            authorsite: manifest.authorsite().map(str::to_string),
+            source: manifest.source().map(str::to_string),
+            version: manifest.version().map(str::to_string),
+            keywords: manifest.config.keywords.clone(),
+            options: manifest.options.clone(),
+        }
+    }
+
+    pub fn is_runnable(&self) -> bool {
+        self.entry_url.is_some()
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct ScanReport {
+    pub mods: Vec<ModCard>,
+    pub errors: Vec<CatalogError>,
+}
+
+pub fn scan(root: &Path) -> Result<ScanReport, CatalogError> {
+    let entries = std::fs::read_dir(root).map_err(|source| CatalogError::Root {
+        path: root.to_path_buf(),
+        source,
+    })?;
+
+    let mut report = ScanReport::default();
+    for entry in entries.flatten() {
+        if !entry.file_type().map(|kind| kind.is_dir()).unwrap_or(false) {
+            continue;
+        }
+        let name = entry.file_name();
+        if name.to_string_lossy().starts_with('.') {
+            continue;
+        }
+        let path = entry.path();
+        match ModManifest::load(&path) {
+            Ok(manifest) => report.mods.push(ModCard::from_manifest(manifest)),
+            Err(source) => report.errors.push(CatalogError::Manifest { path, source }),
+        }
+    }
+
+    report.mods.sort_by(|left, right| {
+        left.name
+            .to_lowercase()
+            .cmp(&right.name.to_lowercase())
+            .then_with(|| left.folder_name.cmp(&right.folder_name))
+    });
+    Ok(report)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn fixtures() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests")
+            .join("fixtures")
+    }
+
+    #[test]
+    fn scans_and_sorts_mods_and_reports_bad_json() {
+        let report = scan(&fixtures()).unwrap();
+        let names: Vec<_> = report.mods.iter().map(|card| card.name.as_str()).collect();
+        assert_eq!(
+            names,
+            vec![
+                "External",
+                "Fallback",
+                "Legacy Mod",
+                "Minimal Mod",
+                "Traversal",
+                "Unknown"
+            ]
+        );
+        assert_eq!(report.errors.len(), 1);
+        assert!(matches!(report.errors[0], CatalogError::Manifest { .. }));
+    }
+
+    #[test]
+    fn cards_expose_urls_and_options() {
+        let report = scan(&fixtures()).unwrap();
+        let minimal = report
+            .mods
+            .iter()
+            .find(|card| card.name == "Minimal Mod")
+            .unwrap();
+        assert_eq!(
+            minimal.entry_url.as_deref(),
+            Some("https://local.octos/minimal/index.html")
+        );
+        assert_eq!(
+            minimal.image_url.as_deref(),
+            Some("https://local.octos/minimal/image.png")
+        );
+        assert!(minimal.is_runnable());
+        assert_eq!(minimal.options["speed"]["value"], 3);
+    }
+
+    #[test]
+    fn external_mod_is_runnable() {
+        let report = scan(&fixtures()).unwrap();
+        let external = report
+            .mods
+            .iter()
+            .find(|card| card.name == "External")
+            .unwrap();
+        assert_eq!(
+            external.entry_url.as_deref(),
+            Some("https://example.com/app")
+        );
+    }
+}

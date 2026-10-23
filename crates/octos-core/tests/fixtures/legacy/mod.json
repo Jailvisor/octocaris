@@ -1,0 +1,6 @@
+{
+  "name": "Legacy Mod",
+  "prefs": {
+    "enabled": { "type": "checkbox", "label": "Enabled", "value": true }
+  }
+}

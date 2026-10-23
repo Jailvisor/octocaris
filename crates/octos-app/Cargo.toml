@@ -1,0 +1,29 @@
+[package]
+name = "octos-app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "octos"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+octos-core = { path = "../octos-core" }
+octos-protocol = { path = "../octos-protocol" }
+octos-storage = { path = "../octos-storage" }
+octos-webview = { path = "../octos-webview" }
+octos-win = { path = "../octos-win" }
+serde_json.workspace = true
+rfd.workspace = true
+tracing.workspace = true
+tracing-appender.workspace = true
+tracing-subscriber.workspace = true
+windows = { workspace = true, features = [
+    "Win32_Foundation",
+    "Win32_System_Com",
+    "Win32_UI_HiDpi",
+    "Win32_UI_WindowsAndMessaging",
+] }

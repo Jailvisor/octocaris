@@ -1,0 +1,238 @@
+import { Interface } from './Interface.js'
+
+/**
+ * @class MediaController
+ * @description
+ * Handle and control events related to system media and playback.
+ */
+class MediaController extends Interface {
+    /**
+     * @typedef {Object} MediaProperties
+     * @property {string} title - The title of the current media.
+     * @property {string} albumArtist - The album artist of the current media.
+     * @property {string} albumTitle - The album title of the current media.
+     * @property {number} albumTrackCount - The number of tracks in the album of the current media.
+     * @property {string} artist - The name of the artist of the current media.
+     * @property {Array<string>} genres - A list of the current media's genres.
+     * @property {number} trackNumber - The track number of the current media.
+     */
+
+    /**
+     * @typedef {Object} PlaybackInfo
+     * @property {'Closed' | 'Opened' | 'Changing' | 'Stopped' | 'Playing' | 'Paused' | 'Unknown'} playbackStatus - The status of the current media's playback.
+     * @property {number} playbackRate - The playback rate of the current media (ex. 1.5 for 1.5x speed-up playback).
+     * @property {boolean} shuffleActive - Whether or not the current media has shuffle enabled.
+     * @property {'Music' | 'Image' | 'Video' | 'Unknown'} playbackType - The type of the current media.
+     */
+
+    /**
+     * @typedef {Object} TimelineProperties
+     * @property {number} startTime - The starting time of the current media in seconds.
+     * @property {number} endTime - The ending time of the current media in seconds.
+     * @property {number} position - The seek position of playback in the current media in seconds (ex. a user is N seconds into a song).
+     * @property {number} minSeekTime - The minimum seek time of playback in the current media in seconds.
+     * @property {number} maxSeekTime - The maximum seek time of playback in the current media in seconds (ex. the length of the media is `maxSeekTime - minSeekTime`).
+     */
+
+    /**
+     * @typedef {Object} AudioStream
+     * @property {number} channels - Number of audio channels (e.g., 2 for stereo).
+     * @property {number} sampleCount - Number of PCM frames in this chunk.
+     * @property {number[]} samples - Normalized PCM samples, in interleaved order if stereo.
+     */
+
+    constructor() {
+        super();
+    }
+
+    _handleReceiveEvent(msg) {
+        switch (msg.eventType) {
+            case 'mediaChange':
+                this._emit('mediaChange', msg.data);
+                break;
+            case 'playbackChange':
+                this._emit('playbackChange', msg.data);
+                break;
+            case 'timelineChange':
+                this._emit('timelineChange', msg.data);
+                break;
+            case 'audioStream':
+                this._emit('audioStream', msg.data);
+                break;
+            default:
+                break;
+        }
+    }
+
+    /**
+     * Add a listener to changes in media events.
+     * @param {'mediaChange' | 'playbackChange' | 'timelineChange' | 'audioStream'} eventName
+     * - Events with type `mediaChange` are fired when the current playing media changes (ex. skipping to the next song).
+     * - Events with type `playbackChange` are fired when the media playback state changes (ex. pausing/playing a song, enabling shuffle, etc.).
+     * - Events with type `timelineChange` are fired whenever the timestamp of the current playing media changes (ex. seeking ahead or back, song progressing, etc.).
+     * - Subscribing to the `audioStream` event returns chunks of PCM (pulse-code modulation) samples of the current audio every 100ms (useful for audio visualizations).
+     * @param {function(object)} callback
+     * Callback receives an object containing one of the following:
+     * - `mediaChange`: {@link MediaProperties}
+     * - `playbackChange`: {@link PlaybackInfo}
+     * - `timelineChange`: {@link TimelineProperties}
+     * - `audioStream`: {@link AudioStream}
+     * @example
+     * mediaController.on('mediaChange', (mediaProps) => {
+     *      console.log('Currently playing: ' + mediaProps.title);
+     * });
+     * 
+     * mediaController.on('playbackChange', (playbackInfo) => {
+     *      if (playbackInfo.playbackStatus == 'Paused')
+     *          console.log('Media is paused.');
+     * });
+     */
+    on(eventName, callback) {
+        super._on(eventName, callback);
+    }
+
+    /**
+     * Add a one-time event listener that removes itself after firing.
+     * @param {'mediaChange' | 'playbackChange' | 'timelineChange' | 'audioStream'} eventName
+     * @param {function(object)} callback
+     */
+    once(eventName, callback) {
+        super._once(eventName, callback);
+    }
+
+    /**
+     * Remove an event listener.
+     * @param {'mediaChange' | 'playbackChange' | 'timelineChange' | 'audioStream'} eventName
+     * @param {Function} callback
+     */
+    off(eventName, callback) {
+        super._off(eventName, callback);
+    }
+
+    /**
+     * Request all media properties.
+     * @returns {Promise<MediaProperties>} Resolves to a MediaProperties object.
+     * @example
+     * mediaController.requestMediaProperties().then((mediaProps) => {
+     *      console.log('Currently playing: ' + mediaProps.title);
+     * })
+     */
+    async requestMediaProperties() {
+        return super._request('media-props');
+    }
+
+    /**
+     * Request all playback info.
+     * @returns {Promise<PlaybackInfo>} Resolves to a PlaybackInfo object.
+     */
+    async requestPlaybackInfo() {
+        return super._request('playback-info');
+    }
+
+    /**
+     * Request all timeline properties.
+     * @returns {Promise<TimelineProperties>} Resolves to a TimelineProperties object.
+     */
+    async requestTimelineProperties() {
+        return super._request('timeline-props');
+    }
+
+    /**
+     * Request the thumbnail image of the current playing media.
+     * @returns {Promise<string>} Resolves to a base64-encoded image string.
+     * @example
+     * myImage = document.getElementById('img');
+     * mediaController.requestThumbnail().then((thumbnail) => {
+     *      myImage.src = thumbnail;
+     *      console.log('Received thumbnail image');
+     * });
+     */
+    async requestThumbnail() {
+        return super._request('thumbnail');
+    }
+
+    /**
+     * Play the current media.
+     */
+    play() {
+        return super._command('media', { cmd: 'play' });
+    }
+
+    /**
+     * Pause the current media.
+     */
+    pause() {
+        return super._command('media', { cmd: 'pause' });
+    }
+
+    /**
+     * Stop the current media.
+     */
+    stop() {
+        return super._command('media', { cmd: 'stop' });
+    }
+
+    /**
+     * Toggle play/pause. If the current playback state is paused, this will play the current media, and vice versa. 
+     */
+    togglePlayPause() {
+        return super._command('media', { cmd: 'toggle' });
+    }
+
+    /**
+     * Skip to the next media.
+     */
+    skipNext() {
+        return super._command('media', { cmd: 'next' });
+    }
+
+    /**
+     * Skip to the previous media.
+     */
+    skipPrevious() {
+        return super._command('media', { cmd: 'previous' });
+    }
+
+    /**
+     * Set the shuffle state.
+     * @param {boolean} state - The shuffle state. Set to `true` to enable shuffling, `false` to disable it.
+     */
+    setShuffle(state = true) {
+        if (state) super._command('media', { cmd: 'enable-shuffle' });
+        else super._command('media', { cmd: 'disable-shuffle' });
+    }
+
+    /**
+     * Set the repeat mode.
+     * @param {'track' | 'list' | 'none'} mode - The repeat mode. `track` enables repeat for the current track, `list` enables repeat for the current media's playlist/album, `none` disables repeat.
+     */
+    setRepeatMode(mode) {
+        switch (mode) {
+            case 'track':
+                super._command('media', { cmd: 'set-repeat-track' });
+                break;
+            case 'list':
+                super._command('media', { cmd: 'set-repeat-list' });
+                break;
+            case 'none':
+                super._command('media', { cmd: 'set-repeat-none' });
+                break;
+            default:
+                break;
+        }
+    }
+
+    /**
+     * Set the seek position.
+     * @param {number} position - The seek position of playback in the current media in seconds.
+     */
+    setSeekPosition(position) {
+        if (Number.isInteger(position)) {
+            super._command('media', { cmd: 'set-playback-position', position: position });
+        } else {
+            throw new TypeError('Expected an integer');
+        }
+    }
+}
+
+export { MediaController };

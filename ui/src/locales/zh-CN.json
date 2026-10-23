@@ -1,0 +1,112 @@
+{
+  "app": {
+    "name": "Octos",
+    "tagline": "动态桌面"
+  },
+  "nav": {
+    "library": "壁纸库",
+    "settings": "设置",
+    "primary": "主导航"
+  },
+  "common": {
+    "showGradient": "显示渐变壁纸",
+    "clearWallpaper": "清除壁纸",
+    "pingHost": "测试宿主",
+    "rustHost": "Rust 宿主",
+    "previewMode": "浏览器预览",
+    "dismiss": "关闭"
+  },
+  "library": {
+    "eyebrow": "Octos Rust · M4",
+    "title": "壁纸库",
+    "subtitle": "浏览、安装并配置你的壁纸。",
+    "emptyTitle": "还没有壁纸",
+    "emptyBody": "安装一个 .zip 壁纸，或选择一个已安装的 mod 并设为壁纸。",
+    "bridgeStatus": "桥接状态",
+    "emptyHint": "安装或选择一个 mod 开始。",
+    "detail": "详情",
+    "author": "作者",
+    "unknownAuthor": "未知作者",
+    "noDescription": "暂无描述。",
+    "monitor": "显示器",
+    "setWallpaper": "设为壁纸",
+    "options": "选项",
+    "noOptions": "这个 mod 没有可配置选项。",
+    "install": "安装 .zip",
+    "installSoon": "从 .zip 文件安装壁纸。",
+    "monitorMap": "显示器分配",
+    "runnable": "HTML 入口",
+    "notRunnable": "没有 HTML 入口",
+    "version": "版本",
+    "source": "来源",
+    "testMod": "测试 mod",
+    "remove": "卸载",
+    "removeConfirm": "确定卸载“{{name}}”？mod 文件夹将被删除。",
+    "installing": "安装中…",
+    "importFolder": "导入文件夹",
+    "importFolderHint": "把一个已解压的壁纸文件夹复制到壁纸库。",
+    "dropHint": "也可以把壁纸文件夹或 .zip 直接拖进窗口。",
+    "dropTitle": "松开以导入壁纸",
+    "dropBody": "支持文件夹和 .zip 文件",
+    "installDone": "安装完成，壁纸库已更新。",
+    "stats": "{{mods}} 个壁纸 · {{monitors}} 台显示器",
+    "inUse": "使用中",
+    "keyboardHint": "使用方向键浏览壁纸"
+  },
+  "settings": {
+    "eyebrow": "Octos Rust · 设置",
+    "title": "设置",
+    "subtitle": "管理界面语言、启动行为与渲染选项。",
+    "showDesktopIcons": {
+      "title": "显示桌面图标",
+      "desc": "切换 Windows 桌面图标；壁纸始终位于图标下方。"
+    },
+    "pauseFullscreen": {
+      "title": "全屏时暂停",
+      "desc": "游戏或视频全屏时停止渲染壁纸。"
+    },
+    "enableGpu": {
+      "title": "硬件加速",
+      "desc": "使用 GPU 渲染壁纸；重启后生效。"
+    },
+    "startWithWindows": {
+      "title": "开机启动",
+      "desc": "在 HKCU Run 中注册应用。"
+    },
+    "allowNotifications": {
+      "title": "允许通知",
+      "desc": "安装/错误时显示托盘气泡。"
+    },
+    "memorySaver": {
+      "title": "内存节省",
+      "desc": "挂起隐藏的壁纸 WebView。"
+    },
+    "language": {
+      "title": "界面语言",
+      "desc": "切换界面语言，立即生效。"
+    }
+  },
+  "bridge": {
+    "eyebrow": "桥接",
+    "preview": "浏览器预览",
+    "waiting": "等待宿主…",
+    "connected": "Rust 宿主已连接",
+    "error": "宿主错误",
+    "protocol": "协议版本",
+    "hostBuild": "宿主版本",
+    "transport": "传输方式",
+    "wallpaper": "壁纸",
+    "gradientActive": "渐变已启用",
+    "cleared": "已清除",
+    "webview": "WebView2 postMessage",
+    "mock": "Mock（开发）"
+  },
+  "language": {
+    "en": "English",
+    "zhCN": "中文"
+  },
+  "footer": {
+    "left": "Octos Rust",
+    "right": "MIT · 上游 Octos by underpig1"
+  }
+}

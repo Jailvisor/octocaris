@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="color-scheme" content="dark">
+<style>
+  html, body { margin: 0; width: 100%; height: 100%; background: #101218; color: #f2f3f7; font: 14px/1.5 "Segoe UI", sans-serif; }
+  main { position: absolute; left: 5vw; top: 5vh; right: 5vw; bottom: 5vh; display: flex; flex-direction: column; gap: 12px; }
+  h1 { margin: 0; font-size: 22px; }
+  p { margin: 0; color: #9aa1b0; }
+  pre { flex: 1; margin: 0; padding: 18px; overflow: auto; border: 1px solid rgba(255,255,255,.12); border-radius: 14px; background: rgba(0,0,0,.35); font: 12px/1.5 Consolas, monospace; white-space: pre-wrap; }
+  button { align-self: flex-start; padding: 8px 14px; border: 0; border-radius: 10px; background: #e5484d; color: #fff; font: inherit; font-weight: 700; cursor: pointer; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Octos protocol conformance</h1>
+  <p>Raw requests through octos-protocol. Results are also written to octos.log at debug level.</p>
+  <button id="run">Run requests</button>
+  <pre id="out">click Run</pre>
+</main>
+<script src="octos.min.js"></script>
+<script>
+  const requests = [
+    'source', 'is-theme-light', 'visibility', 'monitor-id', 'siblings',
+    'desktop-icons-visibility', 'options', 'media-props', 'playback-info',
+    'timeline-props', 'thumbnail'
+  ];
+  const results = {};
+  const apiResults = { loadEvents: [], changeEvents: [] };
+  const userOptions = new octos.UserOptions();
+  let sequence = 0;
+
+  userOptions.on('load', (data) => {
+    apiResults.loadEvents.push(data);
+    results.api = apiResults;
+    render();
+  });
+  userOptions.on('change', (data) => {
+    apiResults.changeEvents.push(data);
+    results.api = apiResults;
+    render();
+  });
+
+  window.chrome?.webview?.addEventListener('message', (event) => {
+    const message = event.data;
+    if (message && message.type === 'response') {
+      results[message.requestType] = message.data;
+      render();
+    } else if (message && message.type === 'event') {
+      (results.events ||= []).push(message);
+      render();
+    }
+  });
+
+  function run() {
+    results.__sentAt = new Date().toISOString();
+    for (const requestType of requests) {
+      sequence += 1;
+      window.chrome?.webview?.postMessage({
+        type: 'request',
+        requestType,
+        requestId: `conf-${sequence}`,
+        data: {}
+      });
+    }
+    render();
+  }
+
+  function render() {
+    document.getElementById('out').textContent = JSON.stringify(results, null, 2);
+  }
+
+  async function runApi() {
+    const system = new octos.System();
+    const bridge = new octos.MonitorBridge();
+    const media = new octos.MediaController();
+    try {
+      apiResults.source = await system.getSource();
+      apiResults.theme = await system.getTheme();
+      apiResults.visibility = await system.getVisibility();
+      apiResults.desktopIcons = await system.getDesktopIconVisibility();
+      apiResults.monitorId = await bridge.requestId();
+      apiResults.siblings = await bridge.requestSiblingIds();
+      apiResults.options = await userOptions.requestOptions();
+      apiResults.media = await media.requestMediaProperties();
+      apiResults.playback = await media.requestPlaybackInfo();
+      apiResults.timeline = await media.requestTimelineProperties();
+      apiResults.thumbnail = await media.requestThumbnail();
+    } catch (error) {
+      apiResults.error = String(error);
+    }
+    results.api = apiResults;
+    render();
+  }
+
+  document.getElementById('run').addEventListener('click', run);
+  setTimeout(runApi, 1200);
+  setTimeout(() => {
+    window.chrome?.webview?.postMessage({
+      type: 'command',
+      commandType: 'octos-internal-apply-option',
+      data: { id: 'speed', value: 5 }
+    });
+  }, 2200);
+  setTimeout(() => {
+    run();
+    window.chrome?.webview?.postMessage({ type: 'subscribe', eventType: 'mediaChange' });
+    window.chrome?.webview?.postMessage({ type: 'unsubscribe', eventType: 'mediaChange' });
+    window.chrome?.webview?.postMessage({
+      type: 'command',
+      commandType: 'set-option',
+      data: { id: 'speed', value: 4 }
+    });
+    setTimeout(() => {
+      window.chrome?.webview?.postMessage({
+        type: 'request',
+        requestType: 'options',
+        requestId: 'conf-after-set',
+        data: {}
+      });
+    }, 250);
+  }, 400);
+</script>
+</body>
+</html>

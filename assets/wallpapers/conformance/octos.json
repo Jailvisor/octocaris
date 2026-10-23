@@ -1,0 +1,15 @@
+{
+  "name": "Conformance",
+  "author": "Octos",
+  "description": "Raw protocol conformance page for M3 host verification.",
+  "entry": "index.html",
+  "version": "0.1.0",
+  "options": {
+    "speed": {
+      "type": "range", "label": "Speed", "value": 3, "min": 1, "max": 5,
+      "onchange": "(value) => window.chrome.webview.postMessage({type:'hook-fired', hook:'onchange', value})",
+      "onchangeload": "(value) => window.chrome.webview.postMessage({type:'hook-fired', hook:'onchangeload', value})"
+    },
+    "dark": { "type": "checkbox", "label": "Dark", "value": true }
+  }
+}

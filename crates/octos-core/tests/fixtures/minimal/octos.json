@@ -1,0 +1,10 @@
+{
+  "name": "Minimal Mod",
+  "author": "Tester",
+  "description": "A minimal test mod.",
+  "image": "image.png",
+  "entry": "index.html",
+  "options": {
+    "speed": { "type": "range", "label": "Speed", "value": 3, "min": 1, "max": 5 }
+  }
+}

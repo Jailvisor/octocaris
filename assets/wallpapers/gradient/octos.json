@@ -1,0 +1,17 @@
+{
+  "name": "Gradient",
+  "author": "Octos",
+  "description": "Built-in animated gradient used for the M2 wallpaper vertical slice.",
+  "entry": "index.html",
+  "version": "0.1.0",
+  "options": {
+    "speed": {
+      "type": "range", "label": "Animation speed", "value": 26, "min": 8, "max": 60, "step": 1,
+      "onchangeload": "(value) => document.documentElement.style.setProperty('--drift-duration', value + 's')"
+    },
+    "accent": {
+      "type": "color-picker", "label": "Accent color", "value": "#e5484d",
+      "onchangeload": "(value) => document.documentElement.style.setProperty('--accent-color', value)"
+    }
+  }
+}

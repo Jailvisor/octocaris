@@ -1,0 +1,112 @@
+{
+  "app": {
+    "name": "Octos",
+    "tagline": "Dynamic desktop"
+  },
+  "nav": {
+    "library": "Library",
+    "settings": "Settings",
+    "primary": "Primary"
+  },
+  "common": {
+    "showGradient": "Show gradient",
+    "clearWallpaper": "Clear wallpaper",
+    "pingHost": "Ping host",
+    "rustHost": "Rust host",
+    "previewMode": "Preview mode",
+    "dismiss": "Dismiss"
+  },
+  "library": {
+    "eyebrow": "Octos Rust · M4",
+    "title": "Library",
+    "subtitle": "Browse, install and configure your wallpapers.",
+    "emptyTitle": "No wallpapers yet",
+    "emptyBody": "Install a .zip wallpaper, or pick an installed mod and set it as your wallpaper.",
+    "bridgeStatus": "Bridge status",
+    "emptyHint": "Install or pick a mod to get started.",
+    "detail": "Details",
+    "author": "Author",
+    "unknownAuthor": "Unknown author",
+    "noDescription": "No description.",
+    "monitor": "Monitor",
+    "setWallpaper": "Set wallpaper",
+    "options": "Options",
+    "noOptions": "This mod has no options.",
+    "install": "Install .zip",
+    "installSoon": "Install a wallpaper from a .zip file.",
+    "monitorMap": "Monitor assignments",
+    "runnable": "HTML entry",
+    "notRunnable": "No HTML entry",
+    "version": "Version",
+    "source": "Source",
+    "testMod": "Test mod",
+    "remove": "Remove",
+    "removeConfirm": "Remove \"{{name}}\"? The mod folder will be deleted.",
+    "installing": "Installing…",
+    "importFolder": "Import folder",
+    "importFolderHint": "Copy an unpacked wallpaper folder into the library.",
+    "dropHint": "You can also drop a wallpaper folder or .zip onto this window.",
+    "dropTitle": "Drop to import wallpaper",
+    "dropBody": "Folders and .zip files are supported",
+    "installDone": "Installed. The library has been updated.",
+    "stats": "{{mods}} wallpapers · {{monitors}} displays",
+    "inUse": "In use",
+    "keyboardHint": "Use the arrow keys to browse wallpapers"
+  },
+  "settings": {
+    "eyebrow": "Octos Rust · Settings",
+    "title": "Settings",
+    "subtitle": "Manage language, startup and rendering behavior.",
+    "showDesktopIcons": {
+      "title": "Show desktop icons",
+      "desc": "Toggle Windows desktop icons. The wallpaper stays behind them."
+    },
+    "pauseFullscreen": {
+      "title": "Pause on fullscreen",
+      "desc": "Stop rendering while a game or video is fullscreen."
+    },
+    "enableGpu": {
+      "title": "Hardware acceleration",
+      "desc": "Use the GPU for wallpaper rendering. Takes effect after restart."
+    },
+    "startWithWindows": {
+      "title": "Start with Windows",
+      "desc": "Register the app in HKCU Run."
+    },
+    "allowNotifications": {
+      "title": "Allow notifications",
+      "desc": "Tray balloons for installs and errors."
+    },
+    "memorySaver": {
+      "title": "Memory saver",
+      "desc": "Suspend hidden wallpaper WebViews."
+    },
+    "language": {
+      "title": "Language",
+      "desc": "UI language. Changes apply immediately."
+    }
+  },
+  "bridge": {
+    "eyebrow": "Bridge",
+    "preview": "Browser preview",
+    "waiting": "Waiting for host…",
+    "connected": "Rust host connected",
+    "error": "Host error",
+    "protocol": "Protocol",
+    "hostBuild": "Host build",
+    "transport": "Transport",
+    "wallpaper": "Wallpaper",
+    "gradientActive": "Gradient active",
+    "cleared": "Cleared",
+    "webview": "WebView2 postMessage",
+    "mock": "Mock (dev)"
+  },
+  "language": {
+    "en": "English",
+    "zhCN": "中文"
+  },
+  "footer": {
+    "left": "Octos Rust",
+    "right": "MIT · upstream Octos by underpig1"
+  }
+}

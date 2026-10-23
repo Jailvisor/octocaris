@@ -1,0 +1,20 @@
+[package]
+name = "octos-storage"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+octos-core = { path = "../octos-core" }
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+zip.workspace = true
+tempfile.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows = { workspace = true, features = ["Win32_Storage_FileSystem"] }
+
+[dev-dependencies]
+tempfile.workspace = true

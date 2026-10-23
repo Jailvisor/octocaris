@@ -1,0 +1,22 @@
+[package]
+name = "octos-webview"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+octos-protocol = { path = "../octos-protocol" }
+serde_json.workspace = true
+tracing.workspace = true
+webview2-com.workspace = true
+windows = { workspace = true, features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Direct3D",
+    "Win32_Graphics_Direct3D11",
+    "Win32_Graphics_DirectComposition",
+    "Win32_Graphics_Dxgi",
+    "Win32_System_Com",
+    "Win32_UI_WindowsAndMessaging",
+] }
