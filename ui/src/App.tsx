@@ -685,20 +685,6 @@ function SettingsView({
       </div>
       <div className="setting-row">
         <div>
-          <h3>{t('settings.liteMode.title')}</h3>
-          <p>{t('settings.liteMode.desc')}</p>
-        </div>
-        <div className="setting-tail">
-          <span className="badge">M5</span>
-          <SettingSwitch
-            checked={settings.liteMode}
-            label={t('settings.liteMode.title')}
-            onChange={(value) => onSetSetting('liteMode', value)}
-          />
-        </div>
-      </div>
-      <div className="setting-row">
-        <div>
           <h3>{t('settings.memorySaver.title')}</h3>
           <p>{t('settings.memorySaver.desc')}</p>
         </div>

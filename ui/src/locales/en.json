@@ -81,7 +81,7 @@
     },
     "memorySaver": {
       "title": "Memory saver",
-      "desc": "Suspend the Octos main UI while it is hidden in the tray; resume automatically when the window returns."
+      "desc": "Suspend the Octos main UI when hidden in the tray; Lite mode closes the frontend entirely."
     },
     "language": {
       "title": "Language",
@@ -91,10 +91,6 @@
       "title": "Wallpaper frame rate",
       "desc": "Cap animation frame rate to save CPU and GPU. Applies immediately.",
       "unlimited": "Unlimited"
-    },
-    "liteMode": {
-      "title": "Lite mode",
-      "desc": "Simplify UI thumbnails and effects, force fullscreen pause and memory saver, and suspend Octos in the tray. Wallpaper FPS is unchanged."
     }
   },
   "bridge": {

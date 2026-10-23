@@ -1,6 +1,7 @@
 #![windows_subsystem = "windows"]
 
 use std::path::{Path as FsPath, PathBuf};
+use std::rc::Rc;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -110,6 +111,13 @@ fn run(paths: Paths) -> Result<()> {
     let _com = ComGuard;
 
     let hwnd = octos_win::create_main_window(saved_window)?;
+    octos_win::set_lite_mode_flag(
+        PREFERENCES
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .as_ref()
+            .is_some_and(|preferences| preferences.app_options.lite_mode),
+    );
     octos_win::add_tray_icon(hwnd).context("could not add tray icon")?;
 
     octos_win::set_window_placement_handler(|placement| {
@@ -131,6 +139,25 @@ fn run(paths: Paths) -> Result<()> {
         if let Some(command) = cli::parse(args.get(1..).unwrap_or(&[])) {
             dispatch_cli(command, &command_paths);
         }
+    });
+    let lite_paths = paths.clone();
+    octos_win::set_lite_mode_handler(move |enabled| {
+        if let Some(preferences) = PREFERENCES
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .as_mut()
+        {
+            preferences.app_options.lite_mode = enabled;
+            if enabled {
+                preferences.app_options.pause_fullscreen = true;
+                preferences.app_options.memory_saver = true;
+            }
+        }
+        if enabled {
+            octos_win::wallpaper::set_pause_fullscreen(true);
+            octos_win::set_memory_saver(true);
+        }
+        save_preferences(&lite_paths);
     });
     if let Some(command) = startup_command {
         dispatch_cli(command, &paths);
@@ -176,88 +203,159 @@ fn run(paths: Paths) -> Result<()> {
             let library_paths = library_paths.clone();
             let push_library_paths = library_paths.clone();
 
-            if let Err(err) = octos_webview::create_main_controller(
-                &environment,
-                hwnd,
-                app_dir,
-                wallpapers_dir,
-                startup_url,
-                move |result| match result {
-                    Ok((controller, webview)) => {
-                        octos_win::set_webview(controller, webview.clone());
-                        let drop_library_paths = library_paths.clone();
-                        octos_webview::add_ui_message_handler(
-                            &webview,
-                            move |request| match request {
-                                UiRequest::Ping { id } => Some(UiResponse::Pong {
-                                    id,
-                                    version: PROTOCOL_VERSION.to_string(),
-                                }),
-                                UiRequest::ShowWallpaper => {
-                                    let url = "https://local.octos/gradient/index.html";
-                                    match octos_win::wallpaper::show_all(url) {
-                                        Ok(()) => Some(UiResponse::WallpaperState { active: true }),
-                                        Err(err) => {
-                                            error!("could not show wallpaper: {err:?}");
-                                            Some(UiResponse::Error {
-                                                message: format!("{err:?}"),
+            let frontend_environment = environment.clone();
+            let attach_frontend: Rc<dyn Fn()> = {
+                let app_dir = app_dir.clone();
+                let wallpapers_dir = wallpapers_dir.clone();
+                let startup_url = startup_url.clone();
+                let library_paths = library_paths.clone();
+                Rc::new(move || {
+                    let app_dir = app_dir.clone();
+                    let wallpapers_dir = wallpapers_dir.clone();
+                    let startup_url = startup_url.clone();
+                    let library_paths = library_paths.clone();
+                    if let Err(err) = octos_webview::create_main_controller(
+                        &frontend_environment,
+                        hwnd,
+                        app_dir,
+                        wallpapers_dir,
+                        startup_url,
+                        move |result| match result {
+                            Ok((controller, webview)) => {
+                                octos_win::set_webview(controller, webview.clone());
+                                let drop_library_paths = library_paths.clone();
+                                octos_webview::add_ui_message_handler(
+                                    &webview,
+                                    move |request| match request {
+                                        UiRequest::Ping { id } => Some(UiResponse::Pong {
+                                            id,
+                                            version: PROTOCOL_VERSION.to_string(),
+                                        }),
+                                        UiRequest::ShowWallpaper => {
+                                            let url = "https://local.octos/gradient/index.html";
+                                            match octos_win::wallpaper::show_all(url) {
+                                                Ok(()) => Some(UiResponse::WallpaperState {
+                                                    active: true,
+                                                }),
+                                                Err(err) => {
+                                                    error!("could not show wallpaper: {err:?}");
+                                                    Some(UiResponse::Error {
+                                                        message: format!("{err:?}"),
+                                                    })
+                                                }
+                                            }
+                                        }
+                                        UiRequest::ClearWallpaper => {
+                                            octos_win::wallpaper::clear_all();
+                                            Some(UiResponse::WallpaperState { active: false })
+                                        }
+                                        UiRequest::GetDesktopIcons => {
+                                            Some(UiResponse::DesktopIcons {
+                                                visible: octos_win::desktop_icons::is_visible(),
                                             })
                                         }
-                                    }
-                                }
-                                UiRequest::ClearWallpaper => {
-                                    octos_win::wallpaper::clear_all();
-                                    Some(UiResponse::WallpaperState { active: false })
-                                }
-                                UiRequest::GetDesktopIcons => Some(UiResponse::DesktopIcons {
-                                    visible: octos_win::desktop_icons::is_visible(),
-                                }),
-                                UiRequest::SetDesktopIcons { visible } => {
-                                    match octos_win::desktop_icons::set_visible(visible) {
-                                        Ok(()) => Some(UiResponse::DesktopIcons { visible }),
-                                        Err(err) => {
-                                            error!(
-                                                "could not set desktop icon visibility: {err:?}"
-                                            );
-                                            Some(UiResponse::Error {
-                                                message: format!("{err:?}"),
-                                            })
+                                        UiRequest::SetDesktopIcons { visible } => {
+                                            match octos_win::desktop_icons::set_visible(visible) {
+                                                Ok(()) => {
+                                                    Some(UiResponse::DesktopIcons { visible })
+                                                }
+                                                Err(err) => {
+                                                    error!(
+                                                        "could not set desktop icon visibility: {err:?}"
+                                                    );
+                                                    Some(UiResponse::Error {
+                                                        message: format!("{err:?}"),
+                                                    })
+                                                }
+                                            }
                                         }
-                                    }
-                                }
-                                UiRequest::GetSettings => Some(UiResponse::Settings {
-                                    data: settings_snapshot(),
-                                }),
-                                UiRequest::SetSetting { key, value } => {
-                                    match apply_setting(&library_paths, &key, &value) {
-                                        Ok(()) => Some(UiResponse::Settings {
+                                        UiRequest::GetSettings => Some(UiResponse::Settings {
                                             data: settings_snapshot(),
                                         }),
-                                        Err(err) => {
-                                            error!("could not apply setting {key}: {err:?}");
-                                            Some(UiResponse::Error {
-                                                message: format!("{err:?}"),
-                                            })
+                                        UiRequest::SetSetting { key, value } => {
+                                            match apply_setting(&library_paths, &key, &value) {
+                                                Ok(()) => Some(UiResponse::Settings {
+                                                    data: settings_snapshot(),
+                                                }),
+                                                Err(err) => {
+                                                    error!(
+                                                        "could not apply setting {key}: {err:?}"
+                                                    );
+                                                    Some(UiResponse::Error {
+                                                        message: format!("{err:?}"),
+                                                    })
+                                                }
+                                            }
                                         }
-                                    }
-                                }
-                                UiRequest::GetLibrary => match library_snapshot(&library_paths) {
-                                    Ok(data) => Some(UiResponse::Library { data }),
-                                    Err(err) => {
-                                        error!("could not scan library: {err:?}");
-                                        Some(UiResponse::Error {
-                                            message: format!("{err:?}"),
-                                        })
-                                    }
-                                },
-                                UiRequest::SetMonitorMod {
-                                    monitor_id,
-                                    folder_path,
-                                } => {
-                                    match set_monitor_mod(&library_paths, &monitor_id, &folder_path)
-                                    {
-                                        Ok(()) => {
-                                            save_preferences(&library_paths);
+                                        UiRequest::GetLibrary => {
+                                            match library_snapshot(&library_paths) {
+                                                Ok(data) => Some(UiResponse::Library { data }),
+                                                Err(err) => {
+                                                    error!("could not scan library: {err:?}");
+                                                    Some(UiResponse::Error {
+                                                        message: format!("{err:?}"),
+                                                    })
+                                                }
+                                            }
+                                        }
+                                        UiRequest::SetMonitorMod {
+                                            monitor_id,
+                                            folder_path,
+                                        } => {
+                                            match set_monitor_mod(
+                                                &library_paths,
+                                                &monitor_id,
+                                                &folder_path,
+                                            ) {
+                                                Ok(()) => {
+                                                    save_preferences(&library_paths);
+                                                    match library_snapshot(&library_paths) {
+                                                        Ok(data) => {
+                                                            Some(UiResponse::Library { data })
+                                                        }
+                                                        Err(err) => Some(UiResponse::Error {
+                                                            message: format!("{err:?}"),
+                                                        }),
+                                                    }
+                                                }
+                                                Err(err) => {
+                                                    error!("could not set monitor mod: {err:?}");
+                                                    Some(UiResponse::Error {
+                                                        message: format!("{err:?}"),
+                                                    })
+                                                }
+                                            }
+                                        }
+                                        UiRequest::SetOption {
+                                            folder_path,
+                                            id,
+                                            value,
+                                        } => {
+                                            if let Ok(manifest) =
+                                                ModManifest::load(FsPath::new(&folder_path))
+                                            {
+                                                let stored = PREFERENCES
+                                                    .lock()
+                                                    .unwrap_or_else(|poisoned| {
+                                                        poisoned.into_inner()
+                                                    })
+                                                    .as_ref()
+                                                    .and_then(|prefs| {
+                                                        prefs.options_for(&folder_path).cloned()
+                                                    });
+                                                octos_win::wallpaper::ensure_mod_options(
+                                                    folder_path.clone(),
+                                                    manifest.options,
+                                                    stored,
+                                                );
+                                            }
+                                            if octos_win::wallpaper::apply_option_from_ui(
+                                                &folder_path,
+                                                &id,
+                                                value,
+                                            ) {
+                                                save_preferences(&library_paths);
+                                            }
                                             match library_snapshot(&library_paths) {
                                                 Ok(data) => Some(UiResponse::Library { data }),
                                                 Err(err) => Some(UiResponse::Error {
@@ -265,88 +363,32 @@ fn run(paths: Paths) -> Result<()> {
                                                 }),
                                             }
                                         }
-                                        Err(err) => {
-                                            error!("could not set monitor mod: {err:?}");
-                                            Some(UiResponse::Error {
-                                                message: format!("{err:?}"),
-                                            })
-                                        }
-                                    }
-                                }
-                                UiRequest::SetOption {
-                                    folder_path,
-                                    id,
-                                    value,
-                                } => {
-                                    if let Ok(manifest) =
-                                        ModManifest::load(FsPath::new(&folder_path))
-                                    {
-                                        let stored = PREFERENCES
-                                            .lock()
-                                            .unwrap_or_else(|poisoned| poisoned.into_inner())
-                                            .as_ref()
-                                            .and_then(|prefs| {
-                                                prefs.options_for(&folder_path).cloned()
-                                            });
-                                        octos_win::wallpaper::ensure_mod_options(
-                                            folder_path.clone(),
-                                            manifest.options,
-                                            stored,
-                                        );
-                                    }
-                                    if octos_win::wallpaper::apply_option_from_ui(
-                                        &folder_path,
-                                        &id,
-                                        value,
-                                    ) {
-                                        save_preferences(&library_paths);
-                                    }
-                                    match library_snapshot(&library_paths) {
-                                        Ok(data) => Some(UiResponse::Library { data }),
-                                        Err(err) => Some(UiResponse::Error {
-                                            message: format!("{err:?}"),
-                                        }),
-                                    }
-                                }
-                                UiRequest::InstallMod => {
-                                    if let Some(path) = rfd::FileDialog::new()
-                                        .add_filter("Octos mod", &["zip"])
-                                        .pick_file()
-                                    {
-                                        match octos_storage::install_zip(
-                                            &path,
-                                            &library_paths.wallpapers,
-                                        ) {
-                                            Ok(_) => match library_snapshot(&library_paths) {
-                                                Ok(data) => Some(UiResponse::Library { data }),
-                                                Err(err) => Some(UiResponse::Error {
-                                                    message: format!("{err:?}"),
-                                                }),
-                                            },
-                                            Err(err) => {
-                                                error!("could not install mod: {err:?}");
-                                                Some(UiResponse::Error {
-                                                    message: format!("{err:?}"),
-                                                })
-                                            }
-                                        }
-                                    } else {
-                                        match library_snapshot(&library_paths) {
-                                            Ok(data) => Some(UiResponse::Library { data }),
-                                            Err(err) => Some(UiResponse::Error {
-                                                message: format!("{err:?}"),
-                                            }),
-                                        }
-                                    }
-                                }
-                                UiRequest::InstallFolder => {
-                                    if let Some(path) = rfd::FileDialog::new().pick_folder() {
-                                        match octos_storage::install_folder(
-                                            &path,
-                                            &library_paths.wallpapers,
-                                        ) {
-                                            Ok(installed) => {
-                                                info!("imported folder {}", installed.display());
+                                        UiRequest::InstallMod => {
+                                            if let Some(path) = rfd::FileDialog::new()
+                                                .add_filter("Octos mod", &["zip"])
+                                                .pick_file()
+                                            {
+                                                match octos_storage::install_zip(
+                                                    &path,
+                                                    &library_paths.wallpapers,
+                                                ) {
+                                                    Ok(_) => match library_snapshot(&library_paths)
+                                                    {
+                                                        Ok(data) => {
+                                                            Some(UiResponse::Library { data })
+                                                        }
+                                                        Err(err) => Some(UiResponse::Error {
+                                                            message: format!("{err:?}"),
+                                                        }),
+                                                    },
+                                                    Err(err) => {
+                                                        error!("could not install mod: {err:?}");
+                                                        Some(UiResponse::Error {
+                                                            message: format!("{err:?}"),
+                                                        })
+                                                    }
+                                                }
+                                            } else {
                                                 match library_snapshot(&library_paths) {
                                                     Ok(data) => Some(UiResponse::Library { data }),
                                                     Err(err) => Some(UiResponse::Error {
@@ -354,36 +396,36 @@ fn run(paths: Paths) -> Result<()> {
                                                     }),
                                                 }
                                             }
-                                            Err(err) => {
-                                                error!("could not import folder: {err:?}");
-                                                Some(UiResponse::Error {
-                                                    message: format!("{err:?}"),
-                                                })
-                                            }
                                         }
-                                    } else {
-                                        match library_snapshot(&library_paths) {
-                                            Ok(data) => Some(UiResponse::Library { data }),
-                                            Err(err) => Some(UiResponse::Error {
-                                                message: format!("{err:?}"),
-                                            }),
-                                        }
-                                    }
-                                }
-                                UiRequest::InstallImage => {
-                                    if let Some(path) = rfd::FileDialog::new()
-                                        .add_filter(
-                                            "Images",
-                                            &["png", "jpg", "jpeg", "webp", "gif", "bmp"],
-                                        )
-                                        .pick_file()
-                                    {
-                                        match octos_storage::install_image(
-                                            &path,
-                                            &library_paths.wallpapers,
-                                        ) {
-                                            Ok(installed) => {
-                                                info!("imported image {}", installed.display());
+                                        UiRequest::InstallFolder => {
+                                            if let Some(path) = rfd::FileDialog::new().pick_folder()
+                                            {
+                                                match octos_storage::install_folder(
+                                                    &path,
+                                                    &library_paths.wallpapers,
+                                                ) {
+                                                    Ok(installed) => {
+                                                        info!(
+                                                            "imported folder {}",
+                                                            installed.display()
+                                                        );
+                                                        match library_snapshot(&library_paths) {
+                                                            Ok(data) => {
+                                                                Some(UiResponse::Library { data })
+                                                            }
+                                                            Err(err) => Some(UiResponse::Error {
+                                                                message: format!("{err:?}"),
+                                                            }),
+                                                        }
+                                                    }
+                                                    Err(err) => {
+                                                        error!("could not import folder: {err:?}");
+                                                        Some(UiResponse::Error {
+                                                            message: format!("{err:?}"),
+                                                        })
+                                                    }
+                                                }
+                                            } else {
                                                 match library_snapshot(&library_paths) {
                                                     Ok(data) => Some(UiResponse::Library { data }),
                                                     Err(err) => Some(UiResponse::Error {
@@ -391,73 +433,113 @@ fn run(paths: Paths) -> Result<()> {
                                                     }),
                                                 }
                                             }
-                                            Err(err) => {
-                                                error!("could not import image: {err:?}");
-                                                Some(UiResponse::Error {
-                                                    message: format!("{err:?}"),
-                                                })
+                                        }
+                                        UiRequest::InstallImage => {
+                                            if let Some(path) = rfd::FileDialog::new()
+                                                .add_filter(
+                                                    "Images",
+                                                    &["png", "jpg", "jpeg", "webp", "gif", "bmp"],
+                                                )
+                                                .pick_file()
+                                            {
+                                                match octos_storage::install_image(
+                                                    &path,
+                                                    &library_paths.wallpapers,
+                                                ) {
+                                                    Ok(installed) => {
+                                                        info!(
+                                                            "imported image {}",
+                                                            installed.display()
+                                                        );
+                                                        match library_snapshot(&library_paths) {
+                                                            Ok(data) => {
+                                                                Some(UiResponse::Library { data })
+                                                            }
+                                                            Err(err) => Some(UiResponse::Error {
+                                                                message: format!("{err:?}"),
+                                                            }),
+                                                        }
+                                                    }
+                                                    Err(err) => {
+                                                        error!("could not import image: {err:?}");
+                                                        Some(UiResponse::Error {
+                                                            message: format!("{err:?}"),
+                                                        })
+                                                    }
+                                                }
+                                            } else {
+                                                match library_snapshot(&library_paths) {
+                                                    Ok(data) => Some(UiResponse::Library { data }),
+                                                    Err(err) => Some(UiResponse::Error {
+                                                        message: format!("{err:?}"),
+                                                    }),
+                                                }
                                             }
                                         }
-                                    } else {
-                                        match library_snapshot(&library_paths) {
-                                            Ok(data) => Some(UiResponse::Library { data }),
-                                            Err(err) => Some(UiResponse::Error {
-                                                message: format!("{err:?}"),
-                                            }),
-                                        }
-                                    }
-                                }
-                                UiRequest::RemoveMod { folder_path } => {
-                                    if FsPath::new(&folder_path)
-                                        == library_paths.wallpapers.join("gradient")
-                                    {
-                                        return Some(UiResponse::Error {
+                                        UiRequest::RemoveMod { folder_path } => {
+                                            if FsPath::new(&folder_path)
+                                                == library_paths.wallpapers.join("gradient")
+                                            {
+                                                return Some(UiResponse::Error {
                                             message:
                                                 "the built-in Gradient wallpaper cannot be removed"
                                                     .to_string(),
                                         });
-                                    }
-                                    let affected: Vec<String> =
-                                        octos_win::wallpaper::selected_monitors()
-                                            .into_iter()
-                                            .filter(|(_, selected)| selected == &folder_path)
-                                            .map(|(monitor, _)| monitor)
-                                            .collect();
-                                    match octos_storage::remove_mod(
-                                        &library_paths.wallpapers,
-                                        FsPath::new(&folder_path),
-                                    ) {
-                                        Ok(()) => {
-                                            octos_win::wallpaper::forget_mod(&folder_path);
-                                            for monitor in affected {
-                                                fallback_to_gradient(&library_paths, &monitor);
                                             }
-                                            save_preferences(&library_paths);
-                                            match library_snapshot(&library_paths) {
-                                                Ok(data) => Some(UiResponse::Library { data }),
-                                                Err(err) => Some(UiResponse::Error {
-                                                    message: format!("{err:?}"),
-                                                }),
+                                            let affected: Vec<String> =
+                                                octos_win::wallpaper::selected_monitors()
+                                                    .into_iter()
+                                                    .filter(|(_, selected)| {
+                                                        selected == &folder_path
+                                                    })
+                                                    .map(|(monitor, _)| monitor)
+                                                    .collect();
+                                            match octos_storage::remove_mod(
+                                                &library_paths.wallpapers,
+                                                FsPath::new(&folder_path),
+                                            ) {
+                                                Ok(()) => {
+                                                    octos_win::wallpaper::forget_mod(&folder_path);
+                                                    for monitor in affected {
+                                                        fallback_to_gradient(
+                                                            &library_paths,
+                                                            &monitor,
+                                                        );
+                                                    }
+                                                    save_preferences(&library_paths);
+                                                    match library_snapshot(&library_paths) {
+                                                        Ok(data) => {
+                                                            Some(UiResponse::Library { data })
+                                                        }
+                                                        Err(err) => Some(UiResponse::Error {
+                                                            message: format!("{err:?}"),
+                                                        }),
+                                                    }
+                                                }
+                                                Err(err) => {
+                                                    error!("could not remove mod: {err:?}");
+                                                    Some(UiResponse::Error {
+                                                        message: format!("{err:?}"),
+                                                    })
+                                                }
                                             }
                                         }
-                                        Err(err) => {
-                                            error!("could not remove mod: {err:?}");
-                                            Some(UiResponse::Error {
-                                                message: format!("{err:?}"),
-                                            })
-                                        }
-                                    }
-                                }
-                            },
-                            move |dropped| install_dropped(dropped, &drop_library_paths),
-                        );
-                        info!("React UI is ready");
+                                    },
+                                    move |dropped| install_dropped(dropped, &drop_library_paths),
+                                );
+                                info!("React UI is ready");
+                            }
+                            Err(err) => {
+                                error!("could not create main WebView2 controller: {err:?}")
+                            }
+                        },
+                    ) {
+                        error!("could not request main WebView2 controller: {err:?}");
                     }
-                    Err(err) => error!("could not create main WebView2 controller: {err:?}"),
-                },
-            ) {
-                error!("could not request main WebView2 controller: {err:?}");
-            }
+                })
+            };
+            attach_frontend();
+            octos_win::set_frontend_factory(move || attach_frontend());
 
             let wallpapers_dir = paths.wallpapers.clone();
             match octos_win::wallpaper::initialize(environment, wallpapers_dir) {
@@ -639,6 +721,7 @@ fn apply_setting(paths: &Paths, key: &str, value: &serde_json::Value) -> Result<
                     octos_win::set_memory_saver(true);
                 }
                 info!("lite mode set to {enabled} (UI simplified; fps unchanged)");
+                octos_win::set_lite_mode(enabled);
             }
             other => return Err(anyhow!("unknown setting: {other}")),
         }

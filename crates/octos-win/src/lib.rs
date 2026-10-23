@@ -46,10 +46,12 @@ pub mod wallpaper;
 pub const MAIN_CLASS: PCWSTR = w!("OctosMainWindow");
 pub const WM_APP_RESTORE: u32 = WM_APP + 1;
 pub const WM_APP_TRAY: u32 = WM_APP + 2;
+pub const WM_APP_LITE_MODE: u32 = WM_APP + 3;
 
 const TRAY_ID: u32 = 1;
 const MENU_OPEN: usize = 1;
 const MENU_QUIT: usize = 2;
+const MENU_LITE: usize = 3;
 const TRAY_TIP: &str = "Octos";
 
 /// One-shot timer that opens DevTools after the wallpaper controllers exist.
@@ -60,6 +62,8 @@ type DropHandler = Rc<dyn Fn(Vec<PathBuf>)>;
 type CommandHandler = Rc<dyn Fn(&str)>;
 type PlacementHandler = Rc<dyn Fn(WindowPlacement)>;
 type DisplayChangeHandler = Rc<dyn Fn()>;
+type FrontendFactory = Rc<dyn Fn()>;
+type LiteModeHandler = Rc<dyn Fn(bool)>;
 
 struct WinState {
     hwnd: HWND,
@@ -69,6 +73,9 @@ struct WinState {
     taskbar_created: u32,
     quitting: bool,
     memory_saver: bool,
+    lite_mode: bool,
+    frontend_factory: Option<FrontendFactory>,
+    lite_mode_handler: Option<LiteModeHandler>,
     drop_handler: Option<DropHandler>,
     command_handler: Option<CommandHandler>,
     placement_handler: Option<PlacementHandler>,
@@ -85,6 +92,9 @@ impl Default for WinState {
             taskbar_created: 0,
             quitting: false,
             memory_saver: true,
+            lite_mode: false,
+            frontend_factory: None,
+            lite_mode_handler: None,
             drop_handler: None,
             command_handler: None,
             placement_handler: None,
@@ -402,6 +412,84 @@ fn memory_saver_enabled() -> bool {
     with_state(|state| state.memory_saver)
 }
 
+/// Register the factory that rebuilds the main React UI after Lite mode closed it.
+pub fn set_frontend_factory(factory: impl Fn() + 'static) {
+    with_state(|state| state.frontend_factory = Some(Rc::new(factory)));
+}
+
+/// Register the app callback used when the tray menu toggles Lite mode.
+pub fn set_lite_mode_handler(handler: impl Fn(bool) + 'static) {
+    with_state(|state| state.lite_mode_handler = Some(Rc::new(handler)));
+}
+
+/// Set the initial Lite mode state without closing the UI (used at startup so
+/// launching Octos always shows the window).
+pub fn set_lite_mode_flag(enabled: bool) {
+    with_state(|state| state.lite_mode = enabled);
+}
+
+pub fn lite_mode() -> bool {
+    with_state(|state| state.lite_mode)
+}
+
+/// Toggle Lite mode. The actual close/rebuild happens on the UI thread in
+/// `WM_APP_LITE_MODE`, so callers may invoke this from a WebView2 callback.
+pub fn set_lite_mode(enabled: bool) {
+    with_state(|state| state.lite_mode = enabled);
+    let hwnd = with_state(|state| state.hwnd);
+    if !hwnd.is_invalid() {
+        unsafe {
+            let _ = PostMessageW(
+                Some(hwnd),
+                WM_APP_LITE_MODE,
+                WPARAM(enabled as usize),
+                LPARAM(0),
+            );
+        }
+    }
+}
+
+fn toggle_lite_mode() {
+    let enabled = !lite_mode();
+    let handler = with_state(|state| state.lite_mode_handler.clone());
+    if let Some(handler) = handler {
+        handler(enabled);
+    }
+    set_lite_mode(enabled);
+}
+
+fn close_frontend(hwnd: HWND) {
+    let (controller, webview) = with_state(|state| (state.controller.take(), state.webview.take()));
+    if let Some(controller) = controller {
+        unsafe {
+            let _ = controller.Close();
+        }
+    }
+    drop(webview);
+    unsafe {
+        let _ = ShowWindow(hwnd, SW_HIDE);
+    }
+    info!("frontend closed (lite mode)");
+}
+
+fn ensure_frontend() {
+    let (missing, factory) =
+        with_state(|state| (state.controller.is_none(), state.frontend_factory.clone()));
+    if missing && let Some(factory) = factory {
+        info!("recreating frontend");
+        factory();
+    }
+}
+
+fn apply_lite_mode(hwnd: HWND, enabled: bool) {
+    with_state(|state| state.lite_mode = enabled);
+    if enabled {
+        close_frontend(hwnd);
+    } else {
+        restore_main_window();
+    }
+}
+
 /// Pause/resume the main React UI when the window is hidden to the tray or
 /// restored. `TrySuspend` frees the renderer while the window is not visible;
 /// `Resume` runs before showing it again.
@@ -472,6 +560,7 @@ pub fn restore_main_window() {
     };
 
     if let Some(hwnd) = hwnd {
+        ensure_frontend();
         set_main_webview_active(true);
         unsafe {
             let _ = ShowWindow(hwnd, SW_SHOW);
@@ -544,6 +633,12 @@ fn show_tray_menu(hwnd: HWND) {
         };
 
         let _ = AppendMenuW(menu, MF_STRING, MENU_OPEN, w!("Open Octos"));
+        let lite_flags = if lite_mode() {
+            MF_STRING | MF_CHECKED
+        } else {
+            MF_STRING | MF_UNCHECKED
+        };
+        let _ = AppendMenuW(menu, lite_flags, MENU_LITE, w!("轻量模式"));
         let _ = AppendMenuW(menu, MF_STRING, MENU_QUIT, w!("Quit"));
 
         let mut point = POINT::default();
@@ -565,6 +660,7 @@ fn show_tray_menu(hwnd: HWND) {
 
         match command {
             MENU_OPEN => restore_main_window(),
+            MENU_LITE => toggle_lite_mode(),
             MENU_QUIT => quit(hwnd),
             _ => {}
         }
@@ -616,13 +712,17 @@ unsafe extern "system" fn wndproc(
             LRESULT(0)
         }
         WM_CLOSE => {
-            // Close to tray; Quit is a separate tray-menu action. Pause the
-            // hidden React UI so it does not keep the GPU/renderer active.
-            unsafe {
-                let _ = ShowWindow(hwnd, SW_HIDE);
-            }
-            if memory_saver_enabled() {
-                set_main_webview_active(false);
+            // Lite mode closes the React UI entirely and leaves the wallpaper
+            // engine running; otherwise close to tray and optionally suspend.
+            if lite_mode() {
+                close_frontend(hwnd);
+            } else {
+                unsafe {
+                    let _ = ShowWindow(hwnd, SW_HIDE);
+                }
+                if memory_saver_enabled() {
+                    set_main_webview_active(false);
+                }
             }
             LRESULT(0)
         }
@@ -673,6 +773,10 @@ unsafe extern "system" fn wndproc(
             }
             LRESULT(0)
         }
+        WM_APP_LITE_MODE => {
+            apply_lite_mode(hwnd, wparam.0 != 0);
+            LRESULT(0)
+        }
         WM_DROPFILES => {
             let paths = read_dropped_paths(HDROP(wparam.0 as *mut core::ffi::c_void));
             if !paths.is_empty() {
@@ -688,6 +792,7 @@ unsafe extern "system" fn wndproc(
             let id = wparam.0 & 0xFFFF;
             match id {
                 MENU_OPEN => restore_main_window(),
+                MENU_LITE => toggle_lite_mode(),
                 MENU_QUIT => quit(hwnd),
                 _ => {}
             }

@@ -81,7 +81,7 @@
     },
     "memorySaver": {
       "title": "内存节省",
-      "desc": "关闭到托盘时挂起 Octos 主界面 WebView；恢复窗口时自动继续。"
+      "desc": "关闭到托盘时挂起 Octos 主界面；轻量模式下直接关闭前端。"
     },
     "language": {
       "title": "界面语言",
@@ -91,10 +91,6 @@
       "title": "壁纸帧率",
       "desc": "限制壁纸动画帧率以节省 CPU/GPU，立即生效。",
       "unlimited": "不限制"
-    },
-    "liteMode": {
-      "title": "轻量模式",
-      "desc": "精简界面缩略图与动效，并强制开启全屏暂停和内存节省；关闭到托盘时挂起 Octos。不改变壁纸帧率。"
     }
   },
   "bridge": {
