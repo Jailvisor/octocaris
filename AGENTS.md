@@ -5,7 +5,7 @@
 ## 0. 当前状态
 
 - 项目：把 Windows 动态壁纸引擎 **Octos** 从 C++/Win32 重写为 **Rust + WebView2 + React**，保留旧 mod 生态。
-- 阶段：**M4 完成（验收报告 `docs/m4-acceptance.md`）**：i18n、Library、按显示器选择、选项表单、zip/文件夹/拖拽安装、卸载、错误 toast、`preferences.json` v2 持久化（选中项 + modOptions + appOptions + 窗口位置）、CLI（`run/reload/new/dev-tools` + `WM_COPYDATA` 第二实例转发）、Settings 三个真实开关（开机启动/全屏暂停/硬件加速）、Win11 Fluent UI 收尾（骨架屏/空态/图片懒加载/键盘导航/InfoBar toast/窗口位置恢复）均已实装并实机验证。`允许通知` 按用户决定不做（M8 占位）。**M5 完成**：prefs 250ms debounce/退出 flush/`.bak`、ProcessFailed renderer 恢复、边框全屏 + 真实 PotPlayer 全屏、Explorer 重启、桌面矩阵、窗口位置均已完成并实测；DPI 100/150% UI 截图、200% 桌面层级通过（见 `docs/m5-hardening.md`）。**多显示器基础链路已完成**：设备名优先匹配、热插拔恢复/默认壁纸、UI 刷新、每屏壁纸/overlay、跨屏 `redirect`、`DisplaySwitch` 插拔、鼠标路由均已实测；**每屏 localStorage/sessionStorage 隔离**已实现并验证（见 `docs/multimonitor.md`）。下一项：图片壁纸导入，随后 M6。**M3 已完成**：`sdk/` 冻结、`octos-core`（33 tests）、`octos-protocol`（10 tests）、`octos-storage`（20 tests）、壁纸宿主请求链 + options 事件/hooks + 旧 `octos.min.js` conformance；仅剩 redirect 多显示器实机验证。M2 核心验收通过（多显示器/真实游戏/ProcessFailed 为已知缺口）。报告：`docs/m0-spike.md`、`docs/m1-shell.md`、`docs/m2-wallpaper.md`、`docs/m2-acceptance.md`、`docs/m3-plan.md`、`docs/m3-conformance.md`、`docs/m4-plan.md`、`docs/m4-acceptance.md`、`docs/upstream-map.md`、`docs/ux-review-checklist.md`。
+- 阶段：**M4 完成（验收报告 `docs/m4-acceptance.md`）**：i18n、Library、按显示器选择、选项表单、zip/文件夹/拖拽安装、卸载、错误 toast、`preferences.json` v2 持久化（选中项 + modOptions + appOptions + 窗口位置）、CLI（`run/reload/new/dev-tools` + `WM_COPYDATA` 第二实例转发）、Settings 三个真实开关（开机启动/全屏暂停/硬件加速）、Win11 Fluent UI 收尾（骨架屏/空态/图片懒加载/键盘导航/InfoBar toast/窗口位置恢复）均已实装并实机验证。`允许通知` 按用户决定不做（M8 占位）。**M5 完成**：prefs 250ms debounce/退出 flush/`.bak`、ProcessFailed renderer 恢复、边框全屏 + 真实 PotPlayer 全屏、Explorer 重启、桌面矩阵、窗口位置均已完成并实测；DPI 100/150% UI 截图、200% 桌面层级通过（见 `docs/m5-hardening.md`）。**多显示器基础链路已完成**：设备名优先匹配、热插拔恢复/默认壁纸、UI 刷新、每屏壁纸/overlay、跨屏 `redirect`、`DisplaySwitch` 插拔、鼠标路由均已实测；**每屏 localStorage/sessionStorage 隔离**已实现并验证（见 `docs/multimonitor.md`）。**图片壁纸导入**已实现：顶栏“添加图片”、拖拽、`octos run image.png`，生成带 `fit` 选项的普通 mod（见 `docs/image-wallpapers.md`）。下一项：M6。**M3 已完成**：`sdk/` 冻结、`octos-core`（33 tests）、`octos-protocol`（11 tests）、`octos-storage`（25 tests）、壁纸宿主请求链 + options 事件/hooks + 旧 `octos.min.js` conformance；跨屏 redirect 已在 M5 实机验证。M2 核心验收通过；多显示器/真实全屏/ProcessFailed 已在 M5 补齐。报告：`docs/m0-spike.md`、`docs/m1-shell.md`、`docs/m2-wallpaper.md`、`docs/m2-acceptance.md`、`docs/m3-plan.md`、`docs/m3-conformance.md`、`docs/m4-plan.md`、`docs/m4-acceptance.md`、`docs/m5-hardening.md`、`docs/multimonitor.md`、`docs/image-wallpapers.md`、`docs/upstream-map.md`、`docs/ux-review-checklist.md`。
 - 新仓库：`/home/lzt/codehub/rust/octos/octos-rs`（本目录）。
 - 上游参考：`/home/lzt/codehub/rust/octos/octos`，**只读**，用于行为对照和兼容性测试。Rust ↔ C++ 的模块映射、有意差异和已踩过的偏差见 `docs/upstream-map.md`；新增 Win32/WebView2 行为前先对照它。
 - 已批准计划：`~/.claude/plans/unified-dancing-lollipop.md`。仓库内的架构决策写到 `docs/`。
@@ -267,9 +267,10 @@ M4 进度 / 下一步（详见 `docs/m4-plan.md`、`docs/m4-acceptance.md`）：
 1. [x] Library 快照/卡片/详情/显示器选择/选项表单。
 2. [x] zip/文件夹/拖拽安装、卸载、错误 toast、误装防护。
 3. [x] `preferences.json` v2：选中项/modOptions/appOptions，原子写、损坏隔离、未知字段保留。
-4. [x] CLI 四个子命令 + 第二实例转发。
+4. [x] CLI 四个子命令 + 第二实例转发（`run` 也接受图片文件）。
 5. [x] Settings：开机启动、全屏暂停、硬件加速。
 6. [x] UI 细节（Win11 Fluent、安装反馈、图片懒加载、空态/骨架屏、键盘导航、窗口位置恢复）。
+9. [x] 图片壁纸导入（`docs/image-wallpapers.md`）。
 7. [ ] 多显示器与真实社区 mod 的 M4 回归。
 8. [x] prefs 写盘 debounce + `.bak`（M5，见 `docs/m5-hardening.md`）。
 

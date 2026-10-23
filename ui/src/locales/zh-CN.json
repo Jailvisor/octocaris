@@ -51,7 +51,9 @@
     "installDone": "安装完成，壁纸库已更新。",
     "stats": "{{mods}} 个壁纸 · {{monitors}} 台显示器",
     "inUse": "使用中",
-    "keyboardHint": "使用方向键浏览壁纸"
+    "keyboardHint": "使用方向键浏览壁纸",
+    "addImage": "添加图片",
+    "addImageHint": "把 PNG、JPEG、WebP、GIF 或 BMP 图片直接作为壁纸。"
   },
   "settings": {
     "eyebrow": "Octos Rust · 设置",

@@ -41,6 +41,12 @@ pub enum InstallError {
     AlreadyInstalled(PathBuf),
     #[error("not an Octos mod (missing octos.json or mod.json): {0}")]
     NotAMod(PathBuf),
+    #[error("unsupported image type: {0}")]
+    UnsupportedImage(String),
+    #[error("image is too large: {size} bytes (limit {limit})")]
+    ImageTooLarge { size: u64, limit: u64 },
+    #[error("not a valid image file: {0}")]
+    InvalidImage(PathBuf),
 }
 
 pub fn install_zip(zip_path: &Path, wallpapers_root: &Path) -> Result<PathBuf, InstallError> {

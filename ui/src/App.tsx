@@ -52,6 +52,16 @@ function FolderPlusIcon() {
   )
 }
 
+function ImageIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <circle cx="8.5" cy="9.5" r="1.6" />
+      <path d="m3 17 5-5 4 4 3-3 6 6" />
+    </svg>
+  )
+}
+
 function RefreshIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -141,6 +151,7 @@ function EmptyLibrary({
   onClear,
   onInstall,
   onImport,
+  onAddImage,
 }: {
   status: HostState
   active: boolean
@@ -148,6 +159,7 @@ function EmptyLibrary({
   onClear: () => void
   onInstall: () => void
   onImport: () => void
+  onAddImage: () => void
 }) {
   const { t } = useTranslation()
 
@@ -161,7 +173,11 @@ function EmptyLibrary({
       <h3>{t('library.emptyTitle')}</h3>
       <p>{t('library.emptyBody')}</p>
       <div className="empty-actions">
-        <button className="button primary" onClick={onInstall}>
+        <button className="button primary" onClick={onAddImage}>
+          <ImageIcon />
+          {t('library.addImage')}
+        </button>
+        <button className="button" onClick={onInstall}>
           <DownloadIcon />
           {t('library.install')}
         </button>
@@ -701,10 +717,10 @@ export default function App() {
   const [library, setLibrary] = useState<LibrarySnapshot | null>(null)
   const [selectedModPath, setSelectedModPath] = useState<string | null>(null)
   const [selectedMonitor, setSelectedMonitor] = useState('')
-  const [installing, setInstalling] = useState<'mod' | 'folder' | null>(null)
+  const [installing, setInstalling] = useState<'mod' | 'folder' | 'image' | null>(null)
   const [dragging, setDragging] = useState(false)
   const [notice, setNotice] = useState<Notice | null>(null)
-  const installingRef = useRef<'mod' | 'folder' | null>(null)
+  const installingRef = useRef<'mod' | 'folder' | 'image' | null>(null)
   const installBaselineRef = useRef(0)
 
   useEffect(() => {
@@ -861,6 +877,15 @@ export default function App() {
     send({ type: 'install-folder' })
   }
 
+  function installImage() {
+    if (!isHosted() || installing) {
+      return
+    }
+    installBaselineRef.current = library?.mods.length ?? 0
+    setInstalling('image')
+    send({ type: 'install-image' })
+  }
+
   function removeMod(folderPath: string, name: string) {
     if (!isHosted()) {
       return
@@ -973,6 +998,18 @@ export default function App() {
           <div className="header-actions">
             <button
               className="button"
+              onClick={installImage}
+              disabled={installing !== null}
+              aria-busy={installing === 'image'}
+              title={t('library.addImageHint')}
+            >
+              {installing === 'image' ? <span className="spinner" /> : <ImageIcon />}
+              <span>
+                {installing === 'image' ? t('library.installing') : t('library.addImage')}
+              </span>
+            </button>
+            <button
+              className="button"
               onClick={installMod}
               disabled={installing !== null}
               aria-busy={installing === 'mod'}
@@ -1064,6 +1101,7 @@ export default function App() {
                     onClear={clearWallpaper}
                     onInstall={installMod}
                     onImport={installFolder}
+                    onAddImage={installImage}
                   />
                   <StatusCard
                     state={hostState}

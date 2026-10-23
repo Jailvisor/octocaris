@@ -51,7 +51,9 @@
     "installDone": "Installed. The library has been updated.",
     "stats": "{{mods}} wallpapers · {{monitors}} displays",
     "inUse": "In use",
-    "keyboardHint": "Use the arrow keys to browse wallpapers"
+    "keyboardHint": "Use the arrow keys to browse wallpapers",
+    "addImage": "Add image",
+    "addImageHint": "Use a PNG, JPEG, WebP, GIF or BMP file as a wallpaper."
   },
   "settings": {
     "eyebrow": "Octos Rust · Settings",

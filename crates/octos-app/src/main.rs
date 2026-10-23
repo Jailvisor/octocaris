@@ -370,6 +370,43 @@ fn run(paths: Paths) -> Result<()> {
                                         }
                                     }
                                 }
+                                UiRequest::InstallImage => {
+                                    if let Some(path) = rfd::FileDialog::new()
+                                        .add_filter(
+                                            "Images",
+                                            &["png", "jpg", "jpeg", "webp", "gif", "bmp"],
+                                        )
+                                        .pick_file()
+                                    {
+                                        match octos_storage::install_image(
+                                            &path,
+                                            &library_paths.wallpapers,
+                                        ) {
+                                            Ok(installed) => {
+                                                info!("imported image {}", installed.display());
+                                                match library_snapshot(&library_paths) {
+                                                    Ok(data) => Some(UiResponse::Library { data }),
+                                                    Err(err) => Some(UiResponse::Error {
+                                                        message: format!("{err:?}"),
+                                                    }),
+                                                }
+                                            }
+                                            Err(err) => {
+                                                error!("could not import image: {err:?}");
+                                                Some(UiResponse::Error {
+                                                    message: format!("{err:?}"),
+                                                })
+                                            }
+                                        }
+                                    } else {
+                                        match library_snapshot(&library_paths) {
+                                            Ok(data) => Some(UiResponse::Library { data }),
+                                            Err(err) => Some(UiResponse::Error {
+                                                message: format!("{err:?}"),
+                                            }),
+                                        }
+                                    }
+                                }
                                 UiRequest::RemoveMod { folder_path } => {
                                     if FsPath::new(&folder_path)
                                         == library_paths.wallpapers.join("gradient")
@@ -475,6 +512,8 @@ fn install_dropped(dropped: Vec<PathBuf>, paths: &Paths) {
     for path in dropped {
         let result = if path.is_dir() {
             octos_storage::install_folder(&path, &paths.wallpapers)
+        } else if octos_storage::is_image_file(&path) {
+            octos_storage::install_image(&path, &paths.wallpapers)
         } else if path
             .extension()
             .is_some_and(|extension| extension.eq_ignore_ascii_case("zip"))
@@ -917,29 +956,33 @@ fn cli_run(paths: &Paths, folder: &FsPath) -> Result<()> {
             source.display()
         ));
     }
-    let source = if source.is_dir() {
-        source
+    let installed = if source.is_file() && octos_storage::is_image_file(&source) {
+        octos_storage::install_image(&source, &paths.wallpapers)?
     } else {
-        source
-            .parent()
-            .map(FsPath::to_path_buf)
-            .ok_or_else(|| anyhow!("{} has no parent folder", source.display()))?
-    };
+        let source = if source.is_dir() {
+            source
+        } else {
+            source
+                .parent()
+                .map(FsPath::to_path_buf)
+                .ok_or_else(|| anyhow!("{} has no parent folder", source.display()))?
+        };
 
-    let wallpapers = paths.wallpapers.canonicalize()?;
-    let canonical = source.canonicalize()?;
-    let installed = if canonical.starts_with(&wallpapers) {
-        if canonical.parent() != Some(wallpapers.as_path()) {
-            return Err(anyhow!(
-                "{} is inside the wallpapers directory but is not a top-level mod folder",
-                canonical.display()
-            ));
+        let wallpapers = paths.wallpapers.canonicalize()?;
+        let canonical = source.canonicalize()?;
+        if canonical.starts_with(&wallpapers) {
+            if canonical.parent() != Some(wallpapers.as_path()) {
+                return Err(anyhow!(
+                    "{} is inside the wallpapers directory but is not a top-level mod folder",
+                    canonical.display()
+                ));
+            }
+            // Keep the non-verbatim absolute path: catalog cards and prefs keys
+            // use `E:\...`, while `canonicalize` yields `\\?\E:\...`.
+            source
+        } else {
+            octos_storage::install_folder(&source, &paths.wallpapers)?
         }
-        // Keep the non-verbatim absolute path: catalog cards and prefs keys use
-        // `E:\...`, while `canonicalize` yields `\\?\E:\...`.
-        source
-    } else {
-        octos_storage::install_folder(&source, &paths.wallpapers)?
     };
 
     let manifest = ModManifest::load(&installed)?;

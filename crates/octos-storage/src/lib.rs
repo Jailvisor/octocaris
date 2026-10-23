@@ -12,11 +12,13 @@
 //! `OCTOS_DATA_DIR` overrides the root so tests never touch real user data.
 
 pub mod atomic;
+pub mod image;
 pub mod install;
 pub mod prefs;
 pub mod template;
 
 pub use atomic::write_atomic;
+pub use image::{install_image, is_image_file};
 pub use install::{InstallError, install_folder, install_zip, remove_mod};
 pub use prefs::{PrefsWriter, load_preferences, save_preferences};
 pub use template::create_mod_template;

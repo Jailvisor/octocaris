@@ -37,6 +37,7 @@ pub enum UiRequest {
     },
     InstallMod,
     InstallFolder,
+    InstallImage,
     RemoveMod {
         folder_path: String,
     },
@@ -65,6 +66,16 @@ mod tests {
         assert_eq!(json, r#"{"type":"ping","id":42}"#);
         let parsed: UiRequest = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed, request);
+    }
+
+    #[test]
+    fn install_image_round_trips() {
+        let json = serde_json::to_string(&UiRequest::InstallImage).unwrap();
+        assert_eq!(json, r#"{"type":"install-image"}"#);
+        assert_eq!(
+            serde_json::from_str::<UiRequest>(&json).unwrap(),
+            UiRequest::InstallImage
+        );
     }
 
     #[test]
