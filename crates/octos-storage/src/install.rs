@@ -300,10 +300,14 @@ fn workshop_project(folder: &Path) -> WorkshopProject {
     let Ok(project) = serde_json::from_str::<serde_json::Value>(&text) else {
         return WorkshopProject::None;
     };
-    match project.get("type").and_then(|value| value.as_str()) {
-        Some("web") => WorkshopProject::Web,
-        Some(kind) => WorkshopProject::Unsupported(kind.to_string()),
-        None => WorkshopProject::None,
+    match project
+        .get("type")
+        .and_then(|value| value.as_str())
+        .map(str::trim)
+    {
+        Some(kind) if kind.eq_ignore_ascii_case("web") => WorkshopProject::Web,
+        Some(kind) if !kind.is_empty() => WorkshopProject::Unsupported(kind.to_string()),
+        _ => WorkshopProject::None,
     }
 }
 
@@ -545,6 +549,23 @@ mod tests {
         assert_eq!(config["entry"], "index.html");
         assert_eq!(config["image"], "preview.gif");
         assert_eq!(config["author"], "Wallpaper Engine");
+    }
+
+    #[test]
+    fn accepts_capitalized_web_package_types() {
+        let temp = tempdir().unwrap();
+        let source = temp.path().join("3253308696");
+        fs::create_dir_all(&source).unwrap();
+        fs::write(
+            source.join("project.json"),
+            r#"{"type":"Web","file":"index.html","title":"Momoi"}"#,
+        )
+        .unwrap();
+        fs::write(source.join("index.html"), "<!doctype html>").unwrap();
+
+        let installed = install_folder(&source, &temp.path().join("wallpapers")).unwrap();
+
+        assert!(installed.join("octos.json").is_file());
     }
 
     #[test]

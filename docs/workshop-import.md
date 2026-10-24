@@ -7,7 +7,7 @@
 
 Steam 创意工坊里的 `.zip` 或文件夹通常只有 `project.json`，没有 Octos 的 `octos.json`/`mod.json`。安装时现在会识别 **Wallpaper Engine web 包** 并自动生成 `octos.json`：
 
-- `project.json` 的 `type` 必须是 `"web"`；
+- `project.json` 的 `type` 为 `web`（**大小写不敏感**，`Web` 也接受，前后空白会忽略）；
 - 用 `file` 作为 `entry`（默认 `index.html`，必须存在且在包内）；
 - 用 `title`、`description` 作为名称和描述；
 - 用 `preview`（存在时）作为卡片图；
@@ -36,4 +36,5 @@ Steam 创意工坊里的 `.zip` 或文件夹通常只有 `project.json`，没有
 
 1. `octos run <folder>` 自动生成 `octos.json`，安装为 `data\wallpapers\2961764492`。
 2. 壁纸 controller 导航到 `https://local.octos/2961764492/index.html`，桌面截图确认 L2D 角色渲染，包内设置面板可用。
-3. `cargo test -p octos-storage install` 覆盖 web 文件夹、web zip、scene 拒绝和 staging 清理。
+3. `cargo test -p octos-storage install` 覆盖 web 文件夹、web zip、`type: "Web"`、scene 拒绝和 staging 清理。
+4. `3253308696`（小桃女仆，`type: "Web"`）同样安装成功并渲染；包自带的设置面板可以正常操作（那不是 Octos 的界面）。
