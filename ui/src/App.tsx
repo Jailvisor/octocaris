@@ -370,7 +370,7 @@ function ModDetail({
   return (
     <div className="panel mod-detail">
       <div className="detail-heading">
-        <h2>{card.name}</h2>
+        <h2 title={card.name}>{card.name}</h2>
         <div className="detail-heading-actions">
           {inUse && (
             <span className="pill success">

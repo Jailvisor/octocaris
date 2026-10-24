@@ -945,8 +945,15 @@ h1 {
 }
 
 .mod-detail h2 {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  min-width: 0;
   margin-bottom: 4px;
+  overflow-wrap: anywhere;
   font-size: 18px;
+  line-height: 1.32;
   letter-spacing: -0.015em;
 }
 
