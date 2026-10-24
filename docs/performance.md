@@ -88,3 +88,23 @@
   - 或对壁纸 controller 调用 `TrySuspend`，同时降低内存；
   - 该项不影响当前可用性，只是省电优化。
 - 内存隐藏后不释放（全屏 1.3 GB、息屏 1.34 GB），属于 WebView2 保持 controller 的预期行为；`TrySuspend` 可进一步降低。
+
+## 2026-10-24 与原版 C++ Octos 对比（同一 L2D 资源）
+
+资源：`3591542544-octos`（C++）与 `3591542544-octos-package`（Rust），两者均为 58 MB 的同一套 L2D 内容。
+环境/方法同上；原版 `E:\application\Octos\Octos.exe` 使用 `%LOCALAPPDATA%\Octos` 数据，其 `preferences.json` 里的 `maxFps: 30` 在 C++ 源码中没有对应实现（全仓搜不到 fps），因此原版实际不限帧；Rust 版默认 30 FPS。
+
+| 场景 | 原版 C++ | Octocaris（Rust） |
+|---|---:|---:|
+| L2D 空闲 | **48.0% / 1085 MB** | **48.8% / 1522 MB**（30 FPS）<br>**71.7% / 1509 MB**（不限帧） |
+| 全屏窗口 | 52.3% / 1131 MB（未识别无边框窗口） | 37.2% / 1277 MB（已隐藏壁纸） |
+| 关闭显示器 | 34.4% / 1109 MB | 38.4% / 1297 MB |
+
+结论：
+
+- **CPU**：默认 30 FPS 下两者几乎相同（48.8% vs 48.0%）；Rust 版不限帧时会到 71.7%，说明 C++ 版实际渲染帧率更低或受 vsync 限制。
+- **内存**：Rust 版高约 40%（~1.5 GB vs ~1.1 GB），主要来自 React 主界面和较新的 WebView2 运行时；仍在可接受范围。
+- **全屏**：Rust 版能识别“精确覆盖显示器”的无边框窗口并隐藏壁纸；C++ 版 `Watchdog.cpp` 只接受带 `WS_OVERLAPPEDWINDOW` 的窗口，会跳过无边框/`WS_POPUP` 全屏游戏。
+- **隐藏不等于停算**：同一 L2D 资源在全屏隐藏后 Rust 版仍有 37% CPU（WE 的 L2D 包隐藏后只有 3%），说明部分 L2D 页面在 `SetIsVisible(false)` 后仍继续跑 JS/rAF；后续应对隐藏的壁纸 controller 调 `TrySuspend` 或注入暂停脚本。
+- **息屏**：两者都没有显式暂停；Rust 版 38.4% vs C++ 34.4%，都需要后续的锁屏/息屏暂停规则。
+- 图片壁纸（Rust）3.3% / 1039 MB；原版没有图片壁纸可比。
