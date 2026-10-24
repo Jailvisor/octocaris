@@ -55,7 +55,8 @@
     "refresh": "刷新壁纸库",
     "showWallpaper": "显示壁纸",
     "hideWallpaper": "隐藏壁纸",
-    "refreshed": "壁纸库已刷新。"
+    "refreshed": "壁纸库已刷新。",
+    "detailEmpty": "在下方壁纸库里选择一张壁纸查看详情。"
   },
   "settings": {
     "title": "设置",

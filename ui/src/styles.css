@@ -539,9 +539,15 @@ h1 {
 
 /* ---------- Panels / cards ---------- */
 
-.content-grid {
+.library-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.library-top {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(300px, 0.42fr);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 16px;
   align-items: start;
 }
@@ -889,14 +895,14 @@ h1 {
 
 /* ---------- Detail ---------- */
 
-.mod-detail-stack {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
 .mod-detail {
   padding: 15px 16px;
+}
+
+.detail-empty {
+  display: grid;
+  place-items: center;
+  min-height: 150px;
 }
 
 .detail-heading {
@@ -1392,7 +1398,7 @@ h1 {
     left: 0;
   }
 
-  .content-grid {
+  .library-top {
     grid-template-columns: 1fr;
   }
 

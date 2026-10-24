@@ -55,7 +55,8 @@
     "refresh": "Refresh library",
     "showWallpaper": "Show wallpapers",
     "hideWallpaper": "Hide wallpapers",
-    "refreshed": "Wallpaper library refreshed."
+    "refreshed": "Wallpaper library refreshed.",
+    "detailEmpty": "Select a wallpaper below to see its details."
   },
   "settings": {
     "title": "Settings",

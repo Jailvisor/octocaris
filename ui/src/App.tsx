@@ -1591,71 +1591,72 @@ export default function App() {
         </header>
 
         {tab === 'library' ? (
-          <>
-            <section className="content-grid" aria-busy={loadingLibrary}>
-              {loadingLibrary ? (
-                <>
-                  <SkeletonGrid />
-                  <div className="mod-detail-stack">
-                    <DetailSkeleton />
-                  </div>
-                </>
-              ) : library && library.mods.length > 0 ? (
-                <>
-                  <ModGrid
+          <section className="library-page" aria-busy={loadingLibrary}>
+            {loadingLibrary ? (
+              <>
+                <div className="library-top">
+                  <DetailSkeleton />
+                  <DetailSkeleton />
+                </div>
+                <SkeletonGrid />
+              </>
+            ) : library && library.mods.length > 0 ? (
+              <>
+                <div className="library-top">
+                  <PlaylistPanel
+                    playlist={playlist}
                     mods={library.mods}
-                    selectedPath={selectedModPath}
-                    playlistPaths={playlist.items}
-                    onSelect={setSelectedModPath}
-                    onToggle={togglePlaylistItem}
-                    onReorder={reorderLibrary}
+                    onToggleEnabled={togglePlaylistEnabled}
+                    onSetInterval={setPlaylistInterval}
+                    onSetRandom={setPlaylistRandom}
+                    onSelectAll={addAllWallpapers}
+                    onNext={playlistNext}
                   />
-                  <div className="mod-detail-stack">
-                    <PlaylistPanel
-                      playlist={playlist}
-                      mods={library.mods}
-                      onToggleEnabled={togglePlaylistEnabled}
-                      onSetInterval={setPlaylistInterval}
-                      onSetRandom={setPlaylistRandom}
-                      onSelectAll={addAllWallpapers}
-                      onNext={playlistNext}
+                  {selectedCard ? (
+                    <ModDetail
+                      card={selectedCard}
+                      options={selectedOptions}
+                      monitors={library.monitors}
+                      monitorNames={library.monitorNames}
+                      selectedMonitor={selectedMonitor}
+                      selected={library.selected}
+                      onMonitorChange={setSelectedMonitor}
+                      onApply={applySelectedMod}
+                      onRemove={() => removeMod(selectedCard.folder_path)}
+                      playlistEnabled={playlist.enabled}
+                      onOptionChange={(id, value) =>
+                        changeOption(selectedCard.folder_path, id, value)
+                      }
                     />
-                    {selectedCard && (
-                      <ModDetail
-                        card={selectedCard}
-                        options={selectedOptions}
-                        monitors={library.monitors}
-                        monitorNames={library.monitorNames}
-                        selectedMonitor={selectedMonitor}
-                        selected={library.selected}
-                        onMonitorChange={setSelectedMonitor}
-                        onApply={applySelectedMod}
-                        onRemove={() => removeMod(selectedCard.folder_path)}
-                        playlistEnabled={playlist.enabled}
-                        onOptionChange={(id, value) =>
-                          changeOption(selectedCard.folder_path, id, value)
-                        }
-                      />
-                    )}
-                    {library.errors.length > 0 && (
-                      <p className="warn-text">{library.errors.join(' · ')}</p>
-                    )}
-                  </div>
-                </>
-              ) : (
-                <>
-                  <EmptyLibrary
-                    active={wallpaperActive}
-                    onShow={showDefaultWallpaper}
-                    onClear={clearWallpaper}
-                    onInstall={installMod}
-                    onImport={installFolder}
-                    onAddImage={installImage}
-                  />
-                </>
-              )}
-            </section>
-          </>
+                  ) : (
+                    <div className="panel mod-detail detail-empty">
+                      <p className="tiny">{t('library.detailEmpty')}</p>
+                    </div>
+                  )}
+                </div>
+                <ModGrid
+                  mods={library.mods}
+                  selectedPath={selectedModPath}
+                  playlistPaths={playlist.items}
+                  onSelect={setSelectedModPath}
+                  onToggle={togglePlaylistItem}
+                  onReorder={reorderLibrary}
+                />
+                {library.errors.length > 0 && (
+                  <p className="warn-text">{library.errors.join(' · ')}</p>
+                )}
+              </>
+            ) : (
+              <EmptyLibrary
+                active={wallpaperActive}
+                onShow={showDefaultWallpaper}
+                onClear={clearWallpaper}
+                onInstall={installMod}
+                onImport={installFolder}
+                onAddImage={installImage}
+              />
+            )}
+          </section>
         ) : (
           <SettingsView
             desktopIcons={desktopIcons}
