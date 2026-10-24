@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#16304A"/>
+      <stop offset="1" stop-color="#0A1622"/>
+    </linearGradient>
+    <linearGradient id="body" gradientUnits="userSpaceOnUse"
+                    x1="0" y1="100" x2="0" y2="430">
+      <stop offset="0" stop-color="#FFA270"/>
+      <stop offset="1" stop-color="#E8502E"/>
+    </linearGradient>
+
+    <!-- 镂空钳子遮罩 -->
+    <mask id="claw-cut" maskUnits="userSpaceOnUse" x="-1000" y="-1000" width="2500" height="2500">
+      <rect x="-1000" y="-1000" width="2500" height="2500" fill="white" />
+      <path transform="rotate(20 230.68 329.573)" d="m189.68,404.57312l41,-149.99999l41,149.99999l-82,0z" fill="black"/>
+    </mask>
+  </defs>
+
+  <!-- 底板 -->
+  <rect x="16" y="16" width="480" height="480" rx="108" fill="url(#bg)"/>
+
+  <!-- 1. 触手层（底层） -->
+  <g stroke="url(#body)" stroke-width="30" stroke-linecap="round" fill="none">
+    <path d="M256 310 L256 408"/>                          <!-- 中腕 -->
+    <path d="M214 306 C206 348 198 378 190 404"/>          <!-- 左内腕 -->
+    <path d="M298 306 C306 348 314 378 322 404"/>          <!-- 右内腕 -->
+    <path d="M184 298 C166 324 150 344 138 360"/>          <!-- 左外腕 -->
+    <path d="M328 298 C346 324 362 344 374 360"/>          <!-- 右外腕 -->
+  </g>
+
+  <!-- 2. 蟹钳层（顶层，覆盖触手） -->
+  <!-- 左侧蟹钳：中心 (120, 390)，填充色改为与触手末端一致的 #EE5D38 -->
+  <g transform="translate(120, 390) scale(0.45) translate(-228, -300)">
+    <g mask="url(#claw-cut)">
+      <ellipse transform="rotate(-50 228 300)" ry="59.8153" rx="99.93837" cy="299.99985" cx="227.99955" fill="#EE5D38"/>
+    </g>
+  </g>
+
+  <!-- 右侧蟹钳：中心 (392, 390) 完美镜像 -->
+  <g transform="translate(392, 390) scale(-0.45, 0.45) translate(-228, -300)">
+    <g mask="url(#claw-cut)">
+      <ellipse transform="rotate(-50 228 300)" ry="59.8153" rx="99.93837" cy="299.99985" cx="227.99955" fill="#EE5D38"/>
+    </g>
+  </g>
+
+  <!-- 3. 章鱼头 -->
+  <path d="M256 112
+           C 182 112 142 166 142 232
+           C 142 272 156 298 176 312
+           L 336 312
+           C 356 298 370 272 370 232
+           C 370 166 330 112 256 112 Z"
+        fill="url(#body)"/>
+
+  <!-- 4. 眼睛 -->
+  <ellipse cx="214" cy="214" rx="17" ry="21" fill="#0A1622"/>
+  <ellipse cx="298" cy="214" rx="17" ry="21" fill="#0A1622"/>
+  
+  <!-- 眼睛高光 -->
+  <circle cx="208" cy="207" r="5" fill="#FFD9C7" opacity="0.9"/>
+  <circle cx="292" cy="207" r="5" fill="#FFD9C7" opacity="0.9"/>
+</svg>

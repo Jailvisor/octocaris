@@ -7,6 +7,7 @@
 
 use std::cell::RefCell;
 use std::mem::size_of;
+use std::os::windows::ffi::OsStrExt;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicU8, Ordering};
@@ -87,6 +88,7 @@ struct WinState {
     placement_handler: Option<PlacementHandler>,
     display_change_handler: Option<DisplayChangeHandler>,
     library_change_handler: Option<LibraryChangeHandler>,
+    custom_icon: Option<HICON>,
 }
 
 impl Default for WinState {
@@ -107,6 +109,7 @@ impl Default for WinState {
             placement_handler: None,
             display_change_handler: None,
             library_change_handler: None,
+            custom_icon: None,
         }
     }
 }
@@ -315,7 +318,7 @@ pub fn create_main_window(saved: Option<WindowPlacement>) -> Result<HWND> {
         let hwnd = CreateWindowExW(
             WINDOW_EX_STYLE(0),
             MAIN_CLASS,
-            w!("Octos"),
+            w!("Octocaris"),
             WS_OVERLAPPEDWINDOW,
             CW_USEDEFAULT,
             CW_USEDEFAULT,
@@ -586,6 +589,47 @@ fn utf16_field(buffer: &[u16]) -> String {
     String::from_utf16_lossy(&buffer[..len]).trim().to_string()
 }
 
+/// Load the app icon from an `.ico` next to the executable.
+pub fn load_app_icon(path: &std::path::Path) -> Option<HICON> {
+    let wide: Vec<u16> = path
+        .as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+    let handle = unsafe {
+        LoadImageW(
+            None,
+            PCWSTR::from_raw(wide.as_ptr()),
+            IMAGE_ICON,
+            0,
+            0,
+            LR_LOADFROMFILE | LR_DEFAULTSIZE,
+        )
+    }
+    .ok()?;
+    Some(HICON(handle.0))
+}
+
+/// Apply the icon to the title bar/taskbar and remember it for the tray.
+pub fn set_window_icon(hwnd: HWND, icon: HICON) {
+    unsafe {
+        SendMessageW(
+            hwnd,
+            WM_SETICON,
+            Some(WPARAM(ICON_BIG as usize)),
+            Some(LPARAM(icon.0 as isize)),
+        );
+        SendMessageW(
+            hwnd,
+            WM_SETICON,
+            Some(WPARAM(ICON_SMALL as usize)),
+            Some(LPARAM(icon.0 as isize)),
+        );
+    }
+    with_state(|state| state.custom_icon = Some(icon));
+    update_tray_icon(hwnd);
+}
+
 /// Register the factory that rebuilds the main React UI after Lite mode closed it.
 pub fn set_frontend_factory(factory: impl Fn() + 'static) {
     with_state(|state| state.frontend_factory = Some(Rc::new(factory)));
@@ -779,9 +823,9 @@ pub fn run_message_loop() {
 
 fn tray_tip() -> &'static str {
     if lite_mode() {
-        "Octos · 轻量模式"
+        "Octocaris · 轻量模式"
     } else {
-        "Octos"
+        "Octocaris"
     }
 }
 
@@ -797,13 +841,15 @@ fn update_tray_icon(hwnd: HWND) {
 }
 
 fn tray_icon_data(hwnd: HWND) -> Result<NOTIFYICONDATAW> {
+    let icon = with_state(|state| state.custom_icon)
+        .unwrap_or_else(|| unsafe { LoadIconW(None, IDI_APPLICATION) }.unwrap_or_default());
     let mut data = NOTIFYICONDATAW {
         cbSize: size_of::<NOTIFYICONDATAW>() as u32,
         hWnd: hwnd,
         uID: TRAY_ID,
         uFlags: NIF_ICON | NIF_MESSAGE | NIF_TIP,
         uCallbackMessage: WM_APP_TRAY,
-        hIcon: unsafe { LoadIconW(None, IDI_APPLICATION) }.unwrap_or_default(),
+        hIcon: icon,
         ..Default::default()
     };
 
@@ -823,7 +869,7 @@ fn show_tray_menu(hwnd: HWND) {
             }
         };
 
-        let _ = AppendMenuW(menu, MF_STRING, MENU_OPEN, w!("打开 Octos"));
+        let _ = AppendMenuW(menu, MF_STRING, MENU_OPEN, w!("打开 Octocaris"));
         let _ = AppendMenuW(menu, MF_SEPARATOR, 0, w!(""));
         let lite_flags = if lite_mode() {
             MF_STRING | MF_CHECKED

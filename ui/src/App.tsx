@@ -12,6 +12,7 @@ import {
   type OptionSpec,
 } from './bridge'
 import { setLanguage, type AppLanguage } from './i18n'
+import logoUrl from './assets/octocaris.svg'
 
 type Tab = 'library' | 'settings'
 type NoticeTone = 'error' | 'success' | 'info'
@@ -1479,7 +1480,9 @@ export default function App() {
     <div className="app">
       <aside className="sidebar">
         <div className="brand">
-          <div className="brand-mark">O</div>
+          <div className="brand-mark">
+            <img src={logoUrl} alt="" />
+          </div>
           <div>
             <strong>{t('app.name')}</strong>
             <small>{t('app.tagline')}</small>
@@ -1589,17 +1592,6 @@ export default function App() {
 
         {tab === 'library' ? (
           <>
-            {library && (
-              <PlaylistPanel
-                playlist={playlist}
-                mods={library.mods}
-                onToggleEnabled={togglePlaylistEnabled}
-                onSetInterval={setPlaylistInterval}
-                onSetRandom={setPlaylistRandom}
-                onSelectAll={addAllWallpapers}
-                onNext={playlistNext}
-              />
-            )}
             <section className="content-grid" aria-busy={loadingLibrary}>
               {loadingLibrary ? (
                 <>
@@ -1619,6 +1611,15 @@ export default function App() {
                     onReorder={reorderLibrary}
                   />
                   <div className="mod-detail-stack">
+                    <PlaylistPanel
+                      playlist={playlist}
+                      mods={library.mods}
+                      onToggleEnabled={togglePlaylistEnabled}
+                      onSetInterval={setPlaylistInterval}
+                      onSetRandom={setPlaylistRandom}
+                      onSelectAll={addAllWallpapers}
+                      onNext={playlistNext}
+                    />
                     {selectedCard && (
                       <ModDetail
                         card={selectedCard}

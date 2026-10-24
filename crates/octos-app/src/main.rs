@@ -66,7 +66,7 @@ fn main() {
         Ok(paths) => paths,
         Err(err) => {
             show_error(&format!(
-                "Could not initialize Octos data directories:\n{err}"
+                "Could not initialize Octocaris data directories:\n{err}"
             ));
             return;
         }
@@ -80,7 +80,7 @@ fn main() {
         Ok(()) => info!("octos exited cleanly"),
         Err(err) => {
             error!("fatal: {err:?}");
-            show_error(&format!("Octos failed:\n{err:?}"));
+            show_error(&format!("Octocaris failed:\n{err:?}"));
         }
     }
 }
@@ -91,7 +91,7 @@ fn run(paths: Paths) -> Result<()> {
         let command_line = octos_win::current_command_line();
         let args = octos_win::split_command_line(&command_line);
         if args.len() <= 1 {
-            info!("another Octos instance is running; asking it to show its window");
+            info!("another Octocaris instance is running; asking it to show its window");
             if !octos_win::restore_existing_instance() {
                 warn!("existing instance was not found by window class");
             }
@@ -143,6 +143,9 @@ fn run(paths: Paths) -> Result<()> {
     let _com = ComGuard;
 
     let hwnd = octos_win::create_main_window(saved_window)?;
+    if let Some(icon) = octos_win::load_app_icon(&paths.exe_dir.join("octocaris.ico")) {
+        octos_win::set_window_icon(hwnd, icon);
+    }
     octos_win::add_tray_icon(hwnd).context("could not add tray icon")?;
 
     octos_win::set_window_placement_handler(|placement| {
@@ -395,7 +398,7 @@ fn run(paths: Paths) -> Result<()> {
                                         }
                                         UiRequest::InstallMod => {
                                             if let Some(path) = rfd::FileDialog::new()
-                                                .add_filter("Octos mod", &["zip"])
+                                                .add_filter("Octocaris mod", &["zip"])
                                                 .pick_file()
                                             {
                                                 match octos_storage::install_zip(
@@ -1327,7 +1330,7 @@ fn show_info(message: &str) {
         let _ = MessageBoxW(
             None,
             PCWSTR::from_raw(text.as_ptr()),
-            w!("Octos"),
+            w!("Octocaris"),
             MB_OK | MB_ICONINFORMATION,
         );
     }
@@ -1372,7 +1375,7 @@ fn execute_cli(command: Command, paths: &Paths) {
         Command::Run { folder, dev_tools } => {
             if let Err(err) = cli_run(paths, &folder) {
                 error!("cli run failed: {err:?}");
-                show_error(&format!("[Octos CLI] Run failed\n\n{err}"));
+                show_error(&format!("[Octocaris CLI] Run failed\n\n{err}"));
             } else if dev_tools {
                 octos_win::schedule_open_dev_tools();
             }
@@ -1383,12 +1386,12 @@ fn execute_cli(command: Command, paths: &Paths) {
         }
         Command::New { folder } => match cli_new(&folder) {
             Ok(path) => show_info(&format!(
-                "[Octos CLI] New succeeded\n\nSuccessfully created new mod at {}",
+                "[Octocaris CLI] New succeeded\n\nSuccessfully created new mod at {}",
                 path.display()
             )),
             Err(err) => {
                 error!("cli new failed: {err:?}");
-                show_error(&format!("[Octos CLI] New failed\n\n{err}"));
+                show_error(&format!("[Octocaris CLI] New failed\n\n{err}"));
             }
         },
         Command::DevTools => octos_win::schedule_open_dev_tools(),
@@ -1478,7 +1481,7 @@ fn show_error(message: &str) {
         let _ = MessageBoxW(
             None,
             PCWSTR::from_raw(text.as_ptr()),
-            w!("Octos"),
+            w!("Octocaris"),
             MB_OK | MB_ICONERROR,
         );
     }

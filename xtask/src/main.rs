@@ -96,6 +96,12 @@ fn deploy() -> Result<()> {
     }
     copy_dir(&ui_dist, &app_dir)?;
 
+    let icon = root.join("assets").join("octocaris.ico");
+    if icon.exists() {
+        std::fs::copy(&icon, deploy_dir.join("octocaris.ico"))
+            .with_context(|| format!("could not copy {}", icon.display()))?;
+    }
+
     let wallpapers = root.join("assets").join("wallpapers");
     if wallpapers.exists() {
         let data_dir = deploy_dir.join("data");
