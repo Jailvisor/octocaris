@@ -1704,142 +1704,29 @@ h1 {
   font-size: 12px;
 }
 
-.playlist-list-head {
-  padding-top: 12px;
-  padding-bottom: 10px;
-  border-bottom: 1px solid var(--line);
-}
-
-.playlist-list {
+.playlist-footer {
   display: flex;
-  flex-direction: column;
-  margin: 0;
-  padding: 6px 12px 12px;
-  list-style: none;
-}
-
-.playlist-row {
-  display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 12px;
-  padding: 8px 10px;
-  border-radius: 6px;
-}
-
-.playlist-row + .playlist-row {
-  border-top: 1px solid var(--line);
-}
-
-.playlist-row.current {
-  background: rgba(229, 72, 77, 0.08);
-}
-
-.playlist-index {
-  width: 18px;
-  flex: 0 0 auto;
-  color: var(--faint);
-  font-size: 12px;
-  text-align: right;
-}
-
-.playlist-thumb {
-  display: grid;
-  place-items: center;
-  width: 56px;
-  height: 35px;
-  flex: 0 0 auto;
-  overflow: hidden;
-  border-radius: 4px;
-  background: rgba(255, 255, 255, 0.06);
-  color: var(--muted);
-  font-size: 14px;
-}
-
-.playlist-thumb img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.playlist-info {
-  display: flex;
-  flex: 1 1 auto;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-
-.playlist-info strong {
-  font-size: 13px;
-  font-weight: 550;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.playlist-info .tiny {
-  color: var(--muted);
+  justify-content: space-between;
+  gap: 10px;
+  padding: 0 20px 14px;
 }
 
 .playlist-actions {
   display: flex;
   flex: 0 0 auto;
   align-items: center;
-  gap: 6px;
-}
-
-.playlist-list-head .playlist-actions {
   gap: 8px;
 }
 
-.icon-button {
-  display: grid;
-  place-items: center;
-  width: 28px;
-  height: 28px;
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  background: transparent;
-  color: var(--muted);
-  font-size: 14px;
-  line-height: 1;
-}
-
-.icon-button:hover:not(:disabled) {
-  border-color: var(--line-strong);
-  color: var(--text);
-}
-
-.icon-button:disabled {
-  opacity: 0.35;
-  cursor: default;
-}
-
-.icon-button.danger:hover:not(:disabled) {
-  border-color: var(--accent);
-  color: var(--accent);
-}
-
-.pill.current {
-  border-color: rgba(229, 72, 77, 0.5);
-  color: var(--accent);
-}
-
-.pill.missing {
-  border-color: rgba(245, 166, 35, 0.4);
-  color: var(--amber);
-}
-
 .playlist-pick-hint {
-  padding: 0 20px 10px;
+  flex: 1 1 240px;
+  margin: 0;
 }
 
 .playlist-empty {
   padding: 14px 20px;
-}
-
-.playlist-empty-hint {
-  padding: 6px 20px 14px;
 }
 
 .playlist-hint {
@@ -1857,15 +1744,6 @@ h1 {
     padding: 12px 16px;
   }
 
-  .playlist-row {
-    gap: 9px;
-    padding: 8px 6px;
-  }
-
-  .playlist-thumb {
-    width: 46px;
-    height: 29px;
-  }
 }
 
 @media (prefers-color-scheme: light) {
@@ -1873,11 +1751,4 @@ h1 {
     background-color: rgba(0, 0, 0, 0.03);
   }
 
-  .playlist-row.current {
-    background: rgba(229, 72, 77, 0.06);
-  }
-
-  .playlist-thumb {
-    background: rgba(0, 0, 0, 0.05);
-  }
 }

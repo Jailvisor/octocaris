@@ -942,7 +942,6 @@ function PlaylistPanel({
   onToggleEnabled,
   onSetInterval,
   onSetRandom,
-  onSetItems,
   onSelectAll,
   onNext,
 }: {
@@ -951,12 +950,10 @@ function PlaylistPanel({
   onToggleEnabled: () => void
   onSetInterval: (seconds: number) => void
   onSetRandom: (random: boolean) => void
-  onSetItems: (items: string[]) => void
   onSelectAll: () => void
   onNext: () => void
 }) {
   const { t } = useTranslation()
-  const [expanded, setExpanded] = useState(false)
   const initialInterval = splitInterval(playlist.intervalSeconds)
   const [intervalMinutes, setIntervalMinutes] = useState(initialInterval.minutes)
   const [intervalSeconds, setIntervalSeconds] = useState(initialInterval.seconds)
@@ -975,7 +972,6 @@ function PlaylistPanel({
     )
   }
 
-  const cards = new Map(mods.map((card) => [card.folder_path, card]))
   const items = playlist.items
   const runnable = mods.filter((card) => card.entry_url)
   const status = !playlist.enabled
@@ -1067,15 +1063,8 @@ function PlaylistPanel({
         </div>
       </div>
 
-      <div className="playlist-head playlist-list-head">
-        <button
-          type="button"
-          className="button ghost"
-          aria-expanded={expanded}
-          onClick={() => setExpanded((value) => !value)}
-        >
-          {t('playlist.list.title', { count: items.length })}
-        </button>
+      <div className="playlist-footer">
+        <p className="tiny playlist-pick-hint">{t('playlist.pickHint')}</p>
         <div className="playlist-actions">
           <button
             type="button"
@@ -1098,55 +1087,9 @@ function PlaylistPanel({
           </button>
         </div>
       </div>
-      <p className="tiny playlist-pick-hint">{t('playlist.pickHint')}</p>
-
-      {expanded &&
-        (items.length === 0 ? (
-          <p className="tiny playlist-empty-hint">{t('playlist.list.empty')}</p>
-        ) : (
-          <ol className="playlist-list">
-            {items.map((path, index) => {
-              const card = cards.get(path)
-              const missing = playlist.missing.includes(path)
-              return (
-                <li
-                  key={path}
-                  className={path === playlist.current ? 'playlist-row current' : 'playlist-row'}
-                >
-                  <span className="playlist-index">{index + 1}</span>
-                  <div className="playlist-thumb">
-                    {card?.image_url ? (
-                      <img src={card.image_url} alt="" draggable={false} loading="lazy" />
-                    ) : (
-                      <span aria-hidden="true">{card?.name.slice(0, 1) ?? '?'}</span>
-                    )}
-                  </div>
-                  <div className="playlist-info">
-                    <strong>{card?.name ?? path}</strong>
-                    {missing && <span className="pill missing">{t('playlist.list.missing')}</span>}
-                  </div>
-                  {path === playlist.current && (
-                    <span className="pill current">{t('playlist.current')}</span>
-                  )}
-                  <div className="playlist-actions">
-                    <button
-                      type="button"
-                      className="icon-button danger"
-                      aria-label={t('playlist.remove')}
-                      onClick={() => onSetItems(items.filter((item) => item !== path))}
-                    >
-                      ×
-                    </button>
-                  </div>
-                </li>
-              )
-            })}
-          </ol>
-        ))}
     </section>
   )
 }
-
 
 export default function App() {
   const { t } = useTranslation()
@@ -1653,7 +1596,6 @@ export default function App() {
                 onToggleEnabled={togglePlaylistEnabled}
                 onSetInterval={setPlaylistInterval}
                 onSetRandom={setPlaylistRandom}
-                onSetItems={setPlaylistItems}
                 onSelectAll={addAllWallpapers}
                 onNext={playlistNext}
               />

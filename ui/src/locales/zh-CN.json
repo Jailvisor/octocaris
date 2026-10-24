@@ -113,15 +113,8 @@
     "random": {
       "title": "随机顺序"
     },
-    "list": {
-      "title": "轮换列表（{{count}}）",
-      "empty": "还没有壁纸，点击“添加壁纸”。",
-      "missing": "文件缺失"
-    },
     "done": "完成",
     "next": "下一张",
-    "remove": "移出轮换",
-    "current": "当前",
     "badge": "轮换",
     "overrideHint": "轮换已启用，下次切换会覆盖手动选择。",
     "status": {

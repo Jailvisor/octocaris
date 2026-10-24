@@ -113,15 +113,8 @@
     "random": {
       "title": "Shuffle"
     },
-    "list": {
-      "title": "Rotation list ({{count}})",
-      "empty": "No wallpapers yet. Use Add wallpapers.",
-      "missing": "File missing"
-    },
     "done": "Done",
     "next": "Next now",
-    "remove": "Remove from rotation",
-    "current": "Showing",
     "badge": "Rotation",
     "overrideHint": "Rotation is on; the next change will override a manual pick.",
     "status": {
