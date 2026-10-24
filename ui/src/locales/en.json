@@ -11,37 +11,25 @@
   "common": {
     "showGradient": "Show gradient",
     "clearWallpaper": "Clear wallpaper",
-    "pingHost": "Ping host",
-    "rustHost": "Rust host",
-    "previewMode": "Preview mode",
     "dismiss": "Dismiss"
   },
   "library": {
-    "eyebrow": "Octos Rust · M4",
     "title": "Library",
     "subtitle": "Browse, install and configure your wallpapers.",
     "emptyTitle": "No wallpapers yet",
     "emptyBody": "Install a .zip wallpaper, or pick an installed mod and set it as your wallpaper.",
-    "bridgeStatus": "Bridge status",
     "emptyHint": "Install or pick a mod to get started.",
-    "detail": "Details",
-    "author": "Author",
-    "unknownAuthor": "Unknown author",
-    "noDescription": "No description.",
     "monitor": "Monitor",
     "setWallpaper": "Set wallpaper",
     "options": "Options",
     "noOptions": "This mod has no options.",
     "install": "Install .zip",
     "installSoon": "Install a wallpaper from a .zip file.",
-    "monitorMap": "Monitor assignments",
     "runnable": "HTML entry",
     "notRunnable": "No HTML entry",
-    "version": "Version",
-    "source": "Source",
     "testMod": "Test mod",
     "remove": "Remove",
-    "removeConfirm": "Remove \"{{name}}\"? The mod folder will be deleted.",
+    "removeConfirm": "Remove this wallpaper? Its mod folder will be deleted.",
     "installing": "Installing…",
     "importFolder": "Import folder",
     "importFolderHint": "Copy an unpacked wallpaper folder into the library.",
@@ -53,15 +41,33 @@
     "inUse": "In use",
     "keyboardHint": "Use the arrow keys to browse wallpapers",
     "addImage": "Add image",
-    "addImageHint": "Use a PNG, JPEG, WebP, GIF or BMP file as a wallpaper."
+    "addImageHint": "Use a PNG, JPEG, WebP, GIF or BMP file as a wallpaper.",
+    "confirm": "Remove",
+    "cancel": "Cancel",
+    "optionLabel": {
+      "fit": "Image fit"
+    },
+    "optionValue": {
+      "cover": "Cover",
+      "contain": "Contain",
+      "fill": "Fill"
+    },
+    "refresh": "Refresh library",
+    "showWallpaper": "Show wallpapers",
+    "hideWallpaper": "Hide wallpapers",
+    "refreshed": "Wallpaper library refreshed."
   },
   "settings": {
-    "eyebrow": "Octos Rust · Settings",
     "title": "Settings",
     "subtitle": "Manage language, startup and rendering behavior.",
     "showDesktopIcons": {
       "title": "Show desktop icons",
       "desc": "Toggle Windows desktop icons. The wallpaper stays behind them."
+    },
+    "openFolder": {
+      "title": "Wallpapers folder",
+      "desc": "Open the folder that holds images, web wallpapers and mods.",
+      "action": "Open"
     },
     "pauseFullscreen": {
       "title": "Pause on fullscreen",
@@ -74,10 +80,6 @@
     "startWithWindows": {
       "title": "Start with Windows",
       "desc": "Register the app in HKCU Run."
-    },
-    "allowNotifications": {
-      "title": "Allow notifications",
-      "desc": "Tray balloons for installs and errors."
     },
     "memorySaver": {
       "title": "Memory saver",
@@ -93,27 +95,46 @@
       "unlimited": "Unlimited"
     }
   },
-  "bridge": {
-    "eyebrow": "Bridge",
-    "preview": "Browser preview",
-    "waiting": "Waiting for host…",
-    "connected": "Rust host connected",
-    "error": "Host error",
-    "protocol": "Protocol",
-    "hostBuild": "Host build",
-    "transport": "Transport",
-    "wallpaper": "Wallpaper",
-    "gradientActive": "Gradient active",
-    "cleared": "Cleared",
-    "webview": "WebView2 postMessage",
-    "mock": "Mock (dev)"
-  },
   "language": {
     "en": "English",
     "zhCN": "中文"
   },
-  "footer": {
-    "left": "Octos Rust",
-    "right": "MIT · upstream Octos by underpig1"
+  "playlist": {
+    "panelTitle": "Wallpaper rotation",
+    "emptyHint": "Import wallpapers to set up automatic rotation here.",
+    "enable": {
+      "title": "Enable rotation"
+    },
+    "interval": {
+      "title": "Change every",
+      "unitSeconds": "seconds",
+      "unitMinutes": "minutes"
+    },
+    "random": {
+      "title": "Shuffle"
+    },
+    "list": {
+      "title": "Rotation list ({{count}})",
+      "empty": "No wallpapers yet. Use Add wallpapers.",
+      "missing": "File missing"
+    },
+    "done": "Done",
+    "next": "Next now",
+    "moveUp": "Move up",
+    "moveDown": "Move down",
+    "remove": "Remove from rotation",
+    "current": "Showing",
+    "badge": "Rotation",
+    "overrideHint": "Rotation is on; the next change will override a manual pick.",
+    "status": {
+      "inactive": "Off",
+      "needTwo": "Add at least two wallpapers to rotate",
+      "missing": "{{count}} item(s) are missing",
+      "active": "Rotating {{count}} wallpapers"
+    },
+    "pickHint": "Tick a card's top-left checkbox to add or remove it; Ctrl+A selects all, Ctrl+D clears the list.",
+    "addTo": "Add to rotation",
+    "removeFrom": "Remove from rotation",
+    "selectAll": "Select all"
   }
 }

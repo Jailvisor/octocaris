@@ -10,8 +10,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 use crate::options::OptionsMap;
+use crate::playlist::Playlist;
 
-pub const CURRENT_VERSION: u32 = 2;
+pub const CURRENT_VERSION: u32 = 3;
 
 fn current_version() -> u32 {
     CURRENT_VERSION
@@ -86,6 +87,10 @@ pub struct Preferences {
     pub app_options: AppOptions,
     #[serde(default)]
     pub window: Option<WindowPlacement>,
+    /// Global wallpaper rotation. Additive: files written by older versions
+    /// simply fall back to a disabled playlist.
+    #[serde(default)]
+    pub playlist: Playlist,
     /// Other fields written by Octos versions (`modData`, ...).
     #[serde(flatten)]
     pub extra: Map<String, Value>,
@@ -99,6 +104,7 @@ impl Default for Preferences {
             mod_options: BTreeMap::new(),
             app_options: AppOptions::default(),
             window: None,
+            playlist: Playlist::default(),
             extra: Map::new(),
         }
     }
@@ -109,6 +115,7 @@ impl Preferences {
     pub fn from_json(text: &str) -> Result<Self, serde_json::Error> {
         let mut preferences: Self = serde_json::from_str(text)?;
         preferences.version = CURRENT_VERSION;
+        preferences.playlist.migrate_legacy();
         Ok(preferences)
     }
 
@@ -131,9 +138,9 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn defaults_are_v2_and_empty() {
+    fn defaults_are_v3_and_empty() {
         let preferences = Preferences::default();
-        assert_eq!(preferences.version, 2);
+        assert_eq!(preferences.version, 3);
         assert!(preferences.selected.is_empty());
         assert!(preferences.mod_options.is_empty());
     }
@@ -147,7 +154,7 @@ mod tests {
             "appOptions": {"allowNotifs": true}
         }"#;
         let preferences = Preferences::from_json(text).unwrap();
-        assert_eq!(preferences.version, 2);
+        assert_eq!(preferences.version, 3);
         assert_eq!(
             preferences
                 .selected
@@ -225,8 +232,56 @@ mod tests {
         let preferences = Preferences::from_json(text).unwrap();
         let encoded = serde_json::to_string(&preferences).unwrap();
         let decoded: Preferences = serde_json::from_str(&encoded).unwrap();
-        assert_eq!(decoded.version, 2);
+        assert_eq!(decoded.version, 3);
         assert!(!decoded.app_options.run_on_startup);
         assert!(decoded.app_options.enable_gpu);
+    }
+
+    #[test]
+    fn playlist_defaults_to_disabled() {
+        let preferences = Preferences::default();
+        assert!(!preferences.playlist.enabled);
+        assert!(preferences.playlist.items.is_empty());
+        assert_eq!(preferences.playlist.interval_seconds, 30 * 60);
+        assert!(!preferences.playlist.random);
+        assert!(preferences.playlist.current.is_none());
+    }
+
+    #[test]
+    fn playlist_round_trips_with_unknown_keys() {
+        let text = r#"{
+            "playlist": {
+                "enabled": true,
+                "items": ["C:/wallpapers/a", "C:/wallpapers/b"],
+                "intervalSeconds": 90,
+                "random": true,
+                "current": "C:/wallpapers/b",
+                "futureField": {"keep": 1}
+            }
+        }"#;
+        let preferences = Preferences::from_json(text).unwrap();
+        assert!(preferences.playlist.enabled);
+        assert_eq!(preferences.playlist.items.len(), 2);
+        assert_eq!(preferences.playlist.interval_seconds, 90);
+        assert!(preferences.playlist.random);
+        assert_eq!(
+            preferences.playlist.current.as_deref(),
+            Some("C:/wallpapers/b")
+        );
+        assert_eq!(
+            preferences.playlist.extra["futureField"],
+            json!({"keep": 1})
+        );
+
+        let encoded = serde_json::to_string(&preferences).unwrap();
+        let decoded: Preferences = serde_json::from_str(&encoded).unwrap();
+        assert_eq!(decoded.playlist, preferences.playlist);
+    }
+
+    #[test]
+    fn legacy_file_without_playlist_parses_disabled() {
+        let preferences = Preferences::from_json(r#"{"selected":{}}"#).unwrap();
+        assert!(!preferences.playlist.enabled);
+        assert_eq!(preferences.version, 3);
     }
 }

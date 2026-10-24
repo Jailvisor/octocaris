@@ -77,6 +77,8 @@ pub struct ModManifest {
     pub entry: Option<Entry>,
     pub image_relative: Option<String>,
     pub image: Option<PathBuf>,
+    /// `thumbnail.jpg` / `thumbnail.png` when the mod ships one.
+    pub thumbnail_relative: Option<String>,
     pub options: Map<String, Value>,
 }
 
@@ -118,6 +120,11 @@ impl ModManifest {
             .map(|relative| folder.join(relative))
             .filter(|path| path.is_file());
 
+        let thumbnail_relative = ["thumbnail.jpg", "thumbnail.png"]
+            .into_iter()
+            .find(|name| folder.join(name).is_file())
+            .and_then(|name| confined_relative(folder, name));
+
         let entry = resolve_entry(folder, config.entry.as_deref());
         let options = config
             .options
@@ -136,6 +143,7 @@ impl ModManifest {
             entry,
             image_relative,
             image,
+            thumbnail_relative,
             options,
         })
     }
@@ -172,14 +180,27 @@ impl ModManifest {
         })
     }
 
+    fn local_url(&self, relative: &str) -> String {
+        format!(
+            "https://local.octos/{}/{}",
+            encode_segment(&self.folder_name),
+            encode_relative(relative)
+        )
+    }
+
     pub fn image_url(&self) -> Option<String> {
-        self.image_relative.as_ref().map(|relative| {
-            format!(
-                "https://local.octos/{}/{}",
-                encode_segment(&self.folder_name),
-                encode_relative(relative)
-            )
-        })
+        self.image_relative
+            .as_deref()
+            .map(|relative| self.local_url(relative))
+    }
+
+    /// URL for library cards: a shipped/generated thumbnail when available,
+    /// otherwise the manifest preview image.
+    pub fn preview_url(&self) -> Option<String> {
+        self.thumbnail_relative
+            .as_deref()
+            .or(self.image_relative.as_deref())
+            .map(|relative| self.local_url(relative))
     }
 }
 
@@ -347,6 +368,59 @@ mod tests {
             manifest.entry_url().as_deref(),
             Some("https://local.octos/fallback/index.html")
         );
+    }
+
+    #[test]
+    fn preview_prefers_a_shipped_thumbnail() {
+        let temp = tempfile::tempdir().unwrap();
+        let folder = temp.path().join("withthumb");
+        std::fs::create_dir_all(&folder).unwrap();
+        std::fs::write(
+            folder.join("octos.json"),
+            r#"{"name":"Thumbed","image":"image.png","entry":"index.html"}"#,
+        )
+        .unwrap();
+        std::fs::write(folder.join("image.png"), b"x").unwrap();
+        std::fs::write(folder.join("thumbnail.jpg"), b"x").unwrap();
+        std::fs::write(folder.join("index.html"), b"x").unwrap();
+
+        let manifest = ModManifest::load(&folder).unwrap();
+
+        assert_eq!(
+            manifest.image_url().as_deref(),
+            Some("https://local.octos/withthumb/image.png")
+        );
+        assert_eq!(
+            manifest.preview_url().as_deref(),
+            Some("https://local.octos/withthumb/thumbnail.jpg")
+        );
+    }
+
+    #[test]
+    fn preview_uses_a_png_thumbnail_when_no_jpeg_exists() {
+        let temp = tempfile::tempdir().unwrap();
+        let folder = temp.path().join("png-thumb");
+        std::fs::create_dir_all(&folder).unwrap();
+        std::fs::write(
+            folder.join("octos.json"),
+            r#"{"name":"Png","image":"image.png","entry":"index.html"}"#,
+        )
+        .unwrap();
+        std::fs::write(folder.join("image.png"), b"x").unwrap();
+        std::fs::write(folder.join("thumbnail.png"), b"x").unwrap();
+
+        let manifest = ModManifest::load(&folder).unwrap();
+
+        assert_eq!(
+            manifest.preview_url().as_deref(),
+            Some("https://local.octos/png-thumb/thumbnail.png")
+        );
+    }
+
+    #[test]
+    fn preview_falls_back_to_the_manifest_image() {
+        let manifest = ModManifest::load(fixture("minimal")).unwrap();
+        assert_eq!(manifest.preview_url(), manifest.image_url());
     }
 
     #[test]

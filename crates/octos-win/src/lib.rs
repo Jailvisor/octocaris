@@ -25,12 +25,16 @@ use windows::Win32::Foundation::{
 };
 use windows::Win32::Graphics::Dwm::{DWMWA_USE_IMMERSIVE_DARK_MODE, DwmSetWindowAttribute};
 use windows::Win32::Graphics::Gdi::{
-    GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITOR_DEFAULTTONULL, MONITORINFO, MonitorFromRect,
-    MonitorFromWindow,
+    DISPLAY_DEVICEW, EnumDisplayDevicesW, GetMonitorInfoW, MONITOR_DEFAULTTONEAREST,
+    MONITOR_DEFAULTTONULL, MONITORINFO, MonitorFromRect, MonitorFromWindow,
 };
 use windows::Win32::System::DataExchange::COPYDATASTRUCT;
+use windows::Win32::System::Diagnostics::ToolHelp::{
+    CreateToolhelp32Snapshot, PROCESSENTRY32W, Process32FirstW, Process32NextW, TH32CS_SNAPPROCESS,
+};
 use windows::Win32::System::Environment::GetCommandLineW;
 use windows::Win32::System::LibraryLoader::{GetModuleHandleW, GetProcAddress};
+use windows::Win32::System::SystemInformation::GetLocalTime;
 use windows::Win32::System::Threading::CreateMutexW;
 use windows::Win32::UI::HiDpi::GetDpiForWindow;
 use windows::Win32::UI::Shell::{
@@ -48,6 +52,7 @@ pub const MAIN_CLASS: PCWSTR = w!("OctosMainWindow");
 pub const WM_APP_RESTORE: u32 = WM_APP + 1;
 pub const WM_APP_TRAY: u32 = WM_APP + 2;
 pub const WM_APP_LITE_MODE: u32 = WM_APP + 3;
+pub const WM_APP_LIBRARY_CHANGED: u32 = WM_APP + 4;
 
 const TRAY_ID: u32 = 1;
 const MENU_OPEN: usize = 1;
@@ -62,6 +67,7 @@ type DropHandler = Rc<dyn Fn(Vec<PathBuf>)>;
 type CommandHandler = Rc<dyn Fn(&str)>;
 type PlacementHandler = Rc<dyn Fn(WindowPlacement)>;
 type DisplayChangeHandler = Rc<dyn Fn()>;
+type LibraryChangeHandler = Rc<dyn Fn()>;
 type FrontendFactory = Rc<dyn Fn()>;
 type LiteModeHandler = Rc<dyn Fn(bool)>;
 
@@ -80,6 +86,7 @@ struct WinState {
     command_handler: Option<CommandHandler>,
     placement_handler: Option<PlacementHandler>,
     display_change_handler: Option<DisplayChangeHandler>,
+    library_change_handler: Option<LibraryChangeHandler>,
 }
 
 impl Default for WinState {
@@ -99,6 +106,7 @@ impl Default for WinState {
             command_handler: None,
             placement_handler: None,
             display_change_handler: None,
+            library_change_handler: None,
         }
     }
 }
@@ -402,6 +410,28 @@ pub fn set_display_change_handler(handler: impl Fn() + 'static) {
     with_state(|state| state.display_change_handler = Some(Rc::new(handler)));
 }
 
+/// Register the UI-thread callback that rebuilds the library snapshot.
+pub fn set_library_change_handler(handler: impl Fn() + 'static) {
+    with_state(|state| state.library_change_handler = Some(Rc::new(handler)));
+}
+
+/// Ask the UI thread to rebuild and push a fresh library snapshot. Safe to call
+/// from a background thread; the handler runs in the window procedure.
+pub fn notify_library_changed() {
+    // Called from the background thumbnail thread: the window state is
+    // thread-local, so look the window up by class instead of touching it.
+    unsafe {
+        if let Ok(hwnd) = FindWindowW(MAIN_CLASS, PCWSTR::null())
+            && !hwnd.is_invalid()
+        {
+            info!("requesting a library refresh from a background thread");
+            let _ = PostMessageW(Some(hwnd), WM_APP_LIBRARY_CHANGED, WPARAM(0), LPARAM(0));
+        } else {
+            warn!("could not find the main window for a library refresh");
+        }
+    }
+}
+
 /// Receive the main window's normal (non-maximized) rectangle as it moves or
 /// resizes. The app stores it in preferences and writes it on exit.
 pub fn set_window_placement_handler(handler: impl Fn(WindowPlacement) + 'static) {
@@ -453,6 +483,107 @@ pub fn set_memory_saver(enabled: bool) {
 
 fn memory_saver_enabled() -> bool {
     with_state(|state| state.memory_saver)
+}
+
+/// True when `hwnd` belongs to a WebView2 process spawned by this app.
+///
+/// Wallpaper overlays are top-level `Chrome_WidgetWin_*` windows in
+/// `msedgewebview2.exe`, which looks exactly like a Chrome/Edge browser. Only
+/// touch windows whose process tree reaches our own PID, otherwise a fullscreen
+/// browser would be made layered/click-through.
+pub(crate) fn is_our_webview_window(hwnd: HWND) -> bool {
+    let mut pid = 0u32;
+    unsafe {
+        GetWindowThreadProcessId(hwnd, Some(&mut pid));
+    }
+    is_descendant_of(pid, std::process::id())
+}
+
+fn is_descendant_of(mut pid: u32, ancestor: u32) -> bool {
+    if pid == 0 {
+        return false;
+    }
+    let Ok(snapshot) = (unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) }) else {
+        return false;
+    };
+    let mut parents: Vec<(u32, u32)> = Vec::new();
+    let mut entry = PROCESSENTRY32W {
+        dwSize: size_of::<PROCESSENTRY32W>() as u32,
+        ..Default::default()
+    };
+    let mut ok = unsafe { Process32FirstW(snapshot, &mut entry) }.is_ok();
+    while ok {
+        parents.push((entry.th32ProcessID, entry.th32ParentProcessID));
+        ok = unsafe { Process32NextW(snapshot, &mut entry) }.is_ok();
+    }
+    unsafe {
+        let _ = CloseHandle(snapshot);
+    }
+    for _ in 0..16 {
+        if pid == ancestor {
+            return true;
+        }
+        match parents.iter().find(|(id, _)| *id == pid) {
+            Some((_, parent)) if *parent != 0 && *parent != pid => pid = *parent,
+            _ => return false,
+        }
+    }
+    false
+}
+
+/// Minutes since local midnight. Read fresh every time so clock changes are
+/// followed without caching.
+pub fn local_minutes_of_day() -> u32 {
+    let now = unsafe { GetLocalTime() };
+    u32::from(now.wHour) * 60 + u32::from(now.wMinute)
+}
+
+/// Friendly monitor names (`\\.\DISPLAYn` -> EDID name such as "DELL U2415")
+/// so the UI can show something more recognizable than the device id.
+pub fn monitor_names() -> std::collections::BTreeMap<String, String> {
+    let mut names = std::collections::BTreeMap::new();
+    let mut index = 0u32;
+    loop {
+        let mut adapter = DISPLAY_DEVICEW {
+            cb: size_of::<DISPLAY_DEVICEW>() as u32,
+            ..Default::default()
+        };
+        if !unsafe { EnumDisplayDevicesW(PCWSTR::null(), index, &mut adapter, 0) }.as_bool() {
+            break;
+        }
+        let device = utf16_field(&adapter.DeviceName);
+        if !device.is_empty() {
+            let mut monitor = DISPLAY_DEVICEW {
+                cb: size_of::<DISPLAY_DEVICEW>() as u32,
+                ..Default::default()
+            };
+            if unsafe {
+                EnumDisplayDevicesW(
+                    PCWSTR::from_raw(adapter.DeviceName.as_ptr()),
+                    0,
+                    &mut monitor,
+                    0,
+                )
+            }
+            .as_bool()
+            {
+                let name = utf16_field(&monitor.DeviceString);
+                if !name.is_empty() {
+                    names.insert(device, name);
+                }
+            }
+        }
+        index += 1;
+    }
+    names
+}
+
+fn utf16_field(buffer: &[u16]) -> String {
+    let len = buffer
+        .iter()
+        .position(|value| *value == 0)
+        .unwrap_or(buffer.len());
+    String::from_utf16_lossy(&buffer[..len]).trim().to_string()
 }
 
 /// Register the factory that rebuilds the main React UI after Lite mode closed it.
@@ -837,6 +968,14 @@ unsafe extern "system" fn wndproc(
         }
         WM_APP_LITE_MODE => {
             apply_lite_mode(hwnd, wparam.0 != 0);
+            LRESULT(0)
+        }
+        WM_APP_LIBRARY_CHANGED => {
+            info!("library change notification received");
+            let handler = with_state(|state| state.library_change_handler.clone());
+            if let Some(handler) = handler {
+                handler();
+            }
             LRESULT(0)
         }
         WM_SETTINGCHANGE | WM_THEMECHANGED => {

@@ -48,7 +48,7 @@ impl ModCard {
             name: manifest.name.clone(),
             author: manifest.author().to_string(),
             description: manifest.description().to_string(),
-            image_url: manifest.image_url(),
+            image_url: manifest.preview_url(),
             entry_url: manifest.entry_url(),
             authorsite: manifest.authorsite().map(str::to_string),
             source: manifest.source().map(str::to_string),
@@ -147,6 +147,28 @@ mod tests {
         );
         assert!(minimal.is_runnable());
         assert_eq!(minimal.options["speed"]["value"], 3);
+    }
+
+    #[test]
+    fn cards_prefer_the_thumbnail() {
+        let temp = tempfile::tempdir().unwrap();
+        let folder = temp.path().join("thumbed");
+        std::fs::create_dir_all(&folder).unwrap();
+        std::fs::write(
+            folder.join("octos.json"),
+            r#"{"name":"Thumbed","image":"image.png","entry":"index.html"}"#,
+        )
+        .unwrap();
+        std::fs::write(folder.join("image.png"), b"x").unwrap();
+        std::fs::write(folder.join("thumbnail.jpg"), b"x").unwrap();
+        std::fs::write(folder.join("index.html"), b"x").unwrap();
+
+        let report = scan(temp.path()).unwrap();
+
+        assert_eq!(
+            report.mods[0].image_url.as_deref(),
+            Some("https://local.octos/thumbed/thumbnail.jpg")
+        );
     }
 
     #[test]

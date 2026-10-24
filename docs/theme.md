@@ -10,6 +10,7 @@
 - `color-scheme: light dark` 让原生控件、滚动条和表单跟随。
 - WebView2/Chromium 会根据 Windows 主题更新 `prefers-color-scheme`；实测切换系统主题时界面**无需重启**即时更新。
 - 预览图、卡片、设置页、拖拽遮罩、toast、骨架屏都有浅色适配。
+- 原生 `<select>` 下拉列表单独处理：控件上显式设置 `color-scheme: dark`（浅色主题下为 `light`），并给 `option` 设置 `background-color: var(--panel-solid)` / `color: var(--text)`；否则下拉弹层会沿用浏览器默认的浅色底。
 
 ## 标题栏
 
@@ -28,6 +29,7 @@
 |---|---|---|
 | 深色 | UI 深色、标题栏深色、托盘菜单深色 | `E:\file\octos\m5-theme-dark.png`、`m5-tray-menu-dark.png` |
 | 浅色 | UI 浅色、标题栏浅色、设置页可读 | `E:\file\octos\m5-theme-light.png` |
+| 深色下拉框 | 原生下拉弹层为深色底、浅色文字，选中项高亮正常 | `E:\file\octos\ui-select-popup-dark.png` |
 
 切换方式：设置 `AppsUseLightTheme`/`SystemUsesLightTheme` 并广播 `WM_SETTINGCHANGE("ImmersiveColorSet")`；测试后已恢复原值。
 

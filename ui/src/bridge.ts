@@ -32,18 +32,31 @@ export type SettingsSnapshot = {
   memorySaver: boolean
 }
 
+export type PlaylistSnapshot = {
+  enabled: boolean
+  items: string[]
+  intervalSeconds: number
+  random: boolean
+  current: string | null
+  missing: string[]
+}
+
 export type LibrarySnapshot = {
   mods: ModCard[]
   monitors: string[]
+  monitorNames?: Record<string, string>
   selected: Record<string, string>
   options: Record<string, Record<string, OptionSpec>>
   errors: string[]
+  /** Optional so an older host bundle still renders. */
+  playlist?: PlaylistSnapshot
 }
 
 export type UiResponse =
   | { type: 'pong'; id: number; version: string }
   | { type: 'wallpaper-state'; active: boolean }
   | { type: 'desktop-icons'; visible: boolean }
+  | { type: 'wallpaper-visibility'; visible: boolean }
   | { type: 'settings'; data: SettingsSnapshot }
   | { type: 'library'; data: LibrarySnapshot }
   | { type: 'notice'; message: string }

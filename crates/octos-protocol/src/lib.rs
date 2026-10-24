@@ -41,6 +41,25 @@ pub enum UiRequest {
     RemoveMod {
         folder_path: String,
     },
+    SetPlaylistItems {
+        items: Vec<String>,
+    },
+    SetPlaylistEnabled {
+        enabled: bool,
+    },
+    SetPlaylistInterval {
+        seconds: u32,
+    },
+    SetPlaylistRandom {
+        random: bool,
+    },
+    PlaylistNext,
+    OpenWallpapersFolder,
+    RefreshLibrary,
+    GetWallpaperVisibility,
+    SetWallpaperVisibility {
+        visible: bool,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -51,6 +70,7 @@ pub enum UiResponse {
     DesktopIcons { visible: bool },
     Settings { data: serde_json::Value },
     Library { data: serde_json::Value },
+    WallpaperVisibility { visible: bool },
     Notice { message: String },
     Error { message: String },
 }
@@ -104,6 +124,60 @@ mod tests {
         };
         let json = serde_json::to_string(&response).unwrap();
         assert_eq!(json, r#"{"type":"pong","id":7,"version":"0.1"}"#);
+    }
+
+    #[test]
+    fn playlist_requests_round_trip() {
+        let items = UiRequest::SetPlaylistItems {
+            items: vec![r"C:\mods\a".into(), r"C:\mods\b".into()],
+        };
+        let json = serde_json::to_string(&items).unwrap();
+        assert_eq!(
+            json,
+            r#"{"type":"set-playlist-items","items":["C:\\mods\\a","C:\\mods\\b"]}"#
+        );
+        assert_eq!(serde_json::from_str::<UiRequest>(&json).unwrap(), items);
+
+        let enabled = UiRequest::SetPlaylistEnabled { enabled: true };
+        let json = serde_json::to_string(&enabled).unwrap();
+        assert_eq!(json, r#"{"type":"set-playlist-enabled","enabled":true}"#);
+        assert_eq!(serde_json::from_str::<UiRequest>(&json).unwrap(), enabled);
+
+        let interval = UiRequest::SetPlaylistInterval { seconds: 90 };
+        let json = serde_json::to_string(&interval).unwrap();
+        assert_eq!(json, r#"{"type":"set-playlist-interval","seconds":90}"#);
+        assert_eq!(serde_json::from_str::<UiRequest>(&json).unwrap(), interval);
+
+        let random = UiRequest::SetPlaylistRandom { random: true };
+        let json = serde_json::to_string(&random).unwrap();
+        assert_eq!(json, r#"{"type":"set-playlist-random","random":true}"#);
+        assert_eq!(serde_json::from_str::<UiRequest>(&json).unwrap(), random);
+
+        let next = UiRequest::PlaylistNext;
+        let json = serde_json::to_string(&next).unwrap();
+        assert_eq!(json, r#"{"type":"playlist-next"}"#);
+        assert_eq!(serde_json::from_str::<UiRequest>(&json).unwrap(), next);
+
+        let open = UiRequest::OpenWallpapersFolder;
+        let json = serde_json::to_string(&open).unwrap();
+        assert_eq!(json, r#"{"type":"open-wallpapers-folder"}"#);
+        assert_eq!(serde_json::from_str::<UiRequest>(&json).unwrap(), open);
+
+        let refresh = UiRequest::RefreshLibrary;
+        let json = serde_json::to_string(&refresh).unwrap();
+        assert_eq!(json, r#"{"type":"refresh-library"}"#);
+        assert_eq!(serde_json::from_str::<UiRequest>(&json).unwrap(), refresh);
+
+        let visibility = UiRequest::SetWallpaperVisibility { visible: false };
+        let json = serde_json::to_string(&visibility).unwrap();
+        assert_eq!(
+            json,
+            r#"{"type":"set-wallpaper-visibility","visible":false}"#
+        );
+        assert_eq!(
+            serde_json::from_str::<UiRequest>(&json).unwrap(),
+            visibility
+        );
     }
 }
 

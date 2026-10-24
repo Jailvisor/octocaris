@@ -2,8 +2,8 @@
 
 use std::path::{Path as FsPath, PathBuf};
 use std::rc::Rc;
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Mutex, OnceLock};
 
 use anyhow::{Context, Result, anyhow};
 use octos_core::catalog;
@@ -15,22 +15,39 @@ use octos_protocol::{PROTOCOL_VERSION, UiRequest, UiResponse};
 use octos_storage::Paths;
 use tracing::{error, info, warn};
 use tracing_subscriber::EnvFilter;
+use windows::Win32::Foundation::HWND;
 use windows::Win32::System::Com::{COINIT_APARTMENTTHREADED, CoInitializeEx, CoUninitialize};
 use windows::Win32::UI::HiDpi::{
     DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2, SetProcessDpiAwarenessContext,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    MB_ICONERROR, MB_ICONINFORMATION, MB_OK, MessageBoxW,
+    KillTimer, MB_ICONERROR, MB_ICONINFORMATION, MB_OK, MessageBoxW, SetTimer,
 };
 use windows::core::{PCWSTR, w};
 
-static PREFERENCES: Mutex<Option<Preferences>> = Mutex::new(None);
+mod rotation;
+
+pub(crate) static PREFERENCES: Mutex<Option<Preferences>> = Mutex::new(None);
 
 /// `octos run`/`reload`/`dev-tools` need the wallpaper slots; commands that
 /// arrive before WebView2 finishes initializing wait here.
-static WALLPAPERS_READY: AtomicBool = AtomicBool::new(false);
+pub(crate) static WALLPAPERS_READY: AtomicBool = AtomicBool::new(false);
 static PENDING_CLI: Mutex<Vec<Command>> = Mutex::new(Vec::new());
 static PREFS_WRITER: Mutex<Option<octos_storage::PrefsWriter>> = Mutex::new(None);
+static THUMBNAIL_BACKFILL_RUNNING: AtomicBool = AtomicBool::new(false);
+
+/// One-second timer that drives wallpaper rotation. Timer ids 2 (watchdog) and
+/// 3 (devtools) are already taken on the UI thread.
+const ROTATION_TIMER_ID: usize = 4;
+const ROTATION_TICK_MS: u32 = 1000;
+
+static ROTATION_PATHS: OnceLock<Paths> = OnceLock::new();
+
+unsafe extern "system" fn rotation_timer(_hwnd: HWND, _message: u32, _id: usize, _time: u32) {
+    if let Some(paths) = ROTATION_PATHS.get() {
+        rotation::tick(paths);
+    }
+}
 
 struct ComGuard;
 
@@ -132,6 +149,13 @@ fn run(paths: Paths) -> Result<()> {
 
     let display_paths = paths.clone();
     octos_win::set_display_change_handler(move || handle_display_change(&display_paths));
+
+    let library_paths = paths.clone();
+    octos_win::set_library_change_handler(move || {
+        if WALLPAPERS_READY.load(Ordering::SeqCst) {
+            push_library(&library_paths);
+        }
+    });
 
     let command_paths = paths.clone();
     octos_win::set_command_handler(move |line| {
@@ -237,7 +261,7 @@ fn run(paths: Paths) -> Result<()> {
                                                 Err(err) => {
                                                     error!("could not show wallpaper: {err:?}");
                                                     Some(UiResponse::Error {
-                                                        message: format!("{err:?}"),
+                                                        message: format!("{err}"),
                                                     })
                                                 }
                                             }
@@ -261,7 +285,7 @@ fn run(paths: Paths) -> Result<()> {
                                                         "could not set desktop icon visibility: {err:?}"
                                                     );
                                                     Some(UiResponse::Error {
-                                                        message: format!("{err:?}"),
+                                                        message: format!("{err}"),
                                                     })
                                                 }
                                             }
@@ -279,7 +303,7 @@ fn run(paths: Paths) -> Result<()> {
                                                         "could not apply setting {key}: {err:?}"
                                                     );
                                                     Some(UiResponse::Error {
-                                                        message: format!("{err:?}"),
+                                                        message: format!("{err}"),
                                                     })
                                                 }
                                             }
@@ -290,7 +314,7 @@ fn run(paths: Paths) -> Result<()> {
                                                 Err(err) => {
                                                     error!("could not scan library: {err:?}");
                                                     Some(UiResponse::Error {
-                                                        message: format!("{err:?}"),
+                                                        message: format!("{err}"),
                                                     })
                                                 }
                                             }
@@ -305,20 +329,21 @@ fn run(paths: Paths) -> Result<()> {
                                                 &folder_path,
                                             ) {
                                                 Ok(()) => {
+                                                    rotation::on_manual_selection(&folder_path);
                                                     save_preferences(&library_paths);
                                                     match library_snapshot(&library_paths) {
                                                         Ok(data) => {
                                                             Some(UiResponse::Library { data })
                                                         }
                                                         Err(err) => Some(UiResponse::Error {
-                                                            message: format!("{err:?}"),
+                                                            message: format!("{err}"),
                                                         }),
                                                     }
                                                 }
                                                 Err(err) => {
                                                     error!("could not set monitor mod: {err:?}");
                                                     Some(UiResponse::Error {
-                                                        message: format!("{err:?}"),
+                                                        message: format!("{err}"),
                                                     })
                                                 }
                                             }
@@ -356,7 +381,7 @@ fn run(paths: Paths) -> Result<()> {
                                             match library_snapshot(&library_paths) {
                                                 Ok(data) => Some(UiResponse::Library { data }),
                                                 Err(err) => Some(UiResponse::Error {
-                                                    message: format!("{err:?}"),
+                                                    message: format!("{err}"),
                                                 }),
                                             }
                                         }
@@ -375,13 +400,13 @@ fn run(paths: Paths) -> Result<()> {
                                                             Some(UiResponse::Library { data })
                                                         }
                                                         Err(err) => Some(UiResponse::Error {
-                                                            message: format!("{err:?}"),
+                                                            message: format!("{err}"),
                                                         }),
                                                     },
                                                     Err(err) => {
                                                         error!("could not install mod: {err:?}");
                                                         Some(UiResponse::Error {
-                                                            message: format!("{err:?}"),
+                                                            message: format!("{err}"),
                                                         })
                                                     }
                                                 }
@@ -389,7 +414,7 @@ fn run(paths: Paths) -> Result<()> {
                                                 match library_snapshot(&library_paths) {
                                                     Ok(data) => Some(UiResponse::Library { data }),
                                                     Err(err) => Some(UiResponse::Error {
-                                                        message: format!("{err:?}"),
+                                                        message: format!("{err}"),
                                                     }),
                                                 }
                                             }
@@ -411,14 +436,14 @@ fn run(paths: Paths) -> Result<()> {
                                                                 Some(UiResponse::Library { data })
                                                             }
                                                             Err(err) => Some(UiResponse::Error {
-                                                                message: format!("{err:?}"),
+                                                                message: format!("{err}"),
                                                             }),
                                                         }
                                                     }
                                                     Err(err) => {
                                                         error!("could not import folder: {err:?}");
                                                         Some(UiResponse::Error {
-                                                            message: format!("{err:?}"),
+                                                            message: format!("{err}"),
                                                         })
                                                     }
                                                 }
@@ -426,7 +451,7 @@ fn run(paths: Paths) -> Result<()> {
                                                 match library_snapshot(&library_paths) {
                                                     Ok(data) => Some(UiResponse::Library { data }),
                                                     Err(err) => Some(UiResponse::Error {
-                                                        message: format!("{err:?}"),
+                                                        message: format!("{err}"),
                                                     }),
                                                 }
                                             }
@@ -453,14 +478,14 @@ fn run(paths: Paths) -> Result<()> {
                                                                 Some(UiResponse::Library { data })
                                                             }
                                                             Err(err) => Some(UiResponse::Error {
-                                                                message: format!("{err:?}"),
+                                                                message: format!("{err}"),
                                                             }),
                                                         }
                                                     }
                                                     Err(err) => {
                                                         error!("could not import image: {err:?}");
                                                         Some(UiResponse::Error {
-                                                            message: format!("{err:?}"),
+                                                            message: format!("{err}"),
                                                         })
                                                     }
                                                 }
@@ -468,7 +493,7 @@ fn run(paths: Paths) -> Result<()> {
                                                 match library_snapshot(&library_paths) {
                                                     Ok(data) => Some(UiResponse::Library { data }),
                                                     Err(err) => Some(UiResponse::Error {
-                                                        message: format!("{err:?}"),
+                                                        message: format!("{err}"),
                                                     }),
                                                 }
                                             }
@@ -503,23 +528,196 @@ fn run(paths: Paths) -> Result<()> {
                                                             &monitor,
                                                         );
                                                     }
+                                                    rotation::on_mod_removed(
+                                                        &library_paths,
+                                                        &folder_path,
+                                                    );
                                                     save_preferences(&library_paths);
                                                     match library_snapshot(&library_paths) {
                                                         Ok(data) => {
                                                             Some(UiResponse::Library { data })
                                                         }
                                                         Err(err) => Some(UiResponse::Error {
-                                                            message: format!("{err:?}"),
+                                                            message: format!("{err}"),
                                                         }),
                                                     }
                                                 }
                                                 Err(err) => {
                                                     error!("could not remove mod: {err:?}");
                                                     Some(UiResponse::Error {
-                                                        message: format!("{err:?}"),
+                                                        message: format!("{err}"),
                                                     })
                                                 }
                                             }
+                                        }
+                                        UiRequest::SetPlaylistItems { items } => {
+                                            let items =
+                                                octos_core::playlist::normalize_items(items);
+                                            let enabled = {
+                                                let mut guard =
+                                                    PREFERENCES.lock().unwrap_or_else(|poisoned| {
+                                                        poisoned.into_inner()
+                                                    });
+                                                match guard.as_mut() {
+                                                    Some(preferences) => {
+                                                        preferences.playlist.items = items;
+                                                        if preferences.playlist.items.is_empty() {
+                                                            preferences.playlist.enabled = false;
+                                                        }
+                                                        let stale = preferences
+                                                            .playlist
+                                                            .current
+                                                            .as_ref()
+                                                            .is_some_and(|current| {
+                                                                preferences
+                                                                    .playlist
+                                                                    .index_of(current)
+                                                                    .is_none()
+                                                            });
+                                                        if stale {
+                                                            preferences.playlist.current = None;
+                                                        }
+                                                        preferences.playlist.enabled
+                                                    }
+                                                    None => false,
+                                                }
+                                            };
+                                            rotation::reset_schedule();
+                                            if enabled
+                                                && let Err(err) =
+                                                    rotation::apply_current(&library_paths)
+                                            {
+                                                error!(
+                                                    "could not align the playlist after an edit: {err:?}"
+                                                );
+                                            }
+                                            save_preferences(&library_paths);
+                                            library_response(&library_paths)
+                                        }
+                                        UiRequest::SetPlaylistEnabled { enabled } => {
+                                            let result = (|| -> anyhow::Result<()> {
+                                                {
+                                                    let mut guard =
+                                                        PREFERENCES.lock().unwrap_or_else(
+                                                            |poisoned| poisoned.into_inner(),
+                                                        );
+                                                    let preferences =
+                                                        guard.as_mut().ok_or_else(|| {
+                                                            anyhow!("preferences are not loaded")
+                                                        })?;
+                                                    if enabled
+                                                        && preferences.playlist.items.is_empty()
+                                                    {
+                                                        return Err(anyhow!(
+                                                            "add at least one wallpaper to the playlist first"
+                                                        ));
+                                                    }
+                                                    preferences.playlist.enabled = enabled;
+                                                }
+                                                rotation::reset_schedule();
+                                                if enabled {
+                                                    rotation::apply_current(&library_paths)?;
+                                                }
+                                                save_preferences(&library_paths);
+                                                Ok(())
+                                            })(
+                                            );
+                                            match result {
+                                                Ok(()) => library_response(&library_paths),
+                                                Err(err) => Some(UiResponse::Error {
+                                                    message: format!("{err}"),
+                                                }),
+                                            }
+                                        }
+                                        UiRequest::SetPlaylistInterval { seconds } => {
+                                            let seconds =
+                                                octos_core::playlist::clamp_interval(seconds);
+                                            if let Some(preferences) = PREFERENCES
+                                                .lock()
+                                                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                                                .as_mut()
+                                            {
+                                                preferences.playlist.interval_seconds = seconds;
+                                            }
+                                            rotation::reset_schedule();
+                                            save_preferences(&library_paths);
+                                            library_response(&library_paths)
+                                        }
+                                        UiRequest::SetPlaylistRandom { random } => {
+                                            if let Some(preferences) = PREFERENCES
+                                                .lock()
+                                                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                                                .as_mut()
+                                            {
+                                                preferences.playlist.random = random;
+                                            }
+                                            rotation::reset_schedule();
+                                            save_preferences(&library_paths);
+                                            library_response(&library_paths)
+                                        }
+                                        UiRequest::PlaylistNext => {
+                                            match rotation::next_now(&library_paths) {
+                                                Ok(true) => library_response(&library_paths),
+                                                Ok(false) => Some(UiResponse::Error {
+                                                    message:
+                                                        "the playlist needs at least two wallpapers"
+                                                            .to_string(),
+                                                }),
+                                                Err(err) => Some(UiResponse::Error {
+                                                    message: format!("{err}"),
+                                                }),
+                                            }
+                                        }
+                                        UiRequest::OpenWallpapersFolder => {
+                                            if let Err(err) =
+                                                std::fs::create_dir_all(&library_paths.wallpapers)
+                                            {
+                                                return Some(UiResponse::Error {
+                                                    message: format!("{err}"),
+                                                });
+                                            }
+                                            match std::process::Command::new("explorer")
+                                                .arg(&library_paths.wallpapers)
+                                                .spawn()
+                                            {
+                                                Ok(_) => None,
+                                                Err(err) => Some(UiResponse::Error {
+                                                    message: format!(
+                                                        "could not open the wallpapers folder: {err}"
+                                                    ),
+                                                }),
+                                            }
+                                        }
+                                        UiRequest::RefreshLibrary => {
+                                            // Match upstream "refresh": rescan the
+                                            // folder and recreate the wallpaper
+                                            // controllers so external changes are
+                                            // picked up.
+                                            let selected =
+                                                octos_win::wallpaper::selected_monitors();
+                                            for (monitor, folder) in selected {
+                                                if let Err(err) = set_monitor_mod(
+                                                    &library_paths,
+                                                    &monitor,
+                                                    &folder,
+                                                ) {
+                                                    warn!(
+                                                        "could not recreate {folder} on {monitor}: {err:?}"
+                                                    );
+                                                }
+                                            }
+                                            backfill_thumbnails(&library_paths);
+                                            library_response(&library_paths)
+                                        }
+                                        UiRequest::GetWallpaperVisibility => {
+                                            Some(UiResponse::WallpaperVisibility {
+                                                visible: octos_win::wallpaper::is_visible(),
+                                            })
+                                        }
+                                        UiRequest::SetWallpaperVisibility { visible } => {
+                                            octos_win::wallpaper::set_visible(visible);
+                                            info!("wallpaper visibility set to {visible}");
+                                            Some(UiResponse::WallpaperVisibility { visible })
                                         }
                                     },
                                     move |dropped| install_dropped(dropped, &drop_library_paths),
@@ -554,6 +752,23 @@ fn run(paths: Paths) -> Result<()> {
                         &wallpaper_options,
                         &push_library_paths,
                     );
+                    let _ = ROTATION_PATHS.set(push_library_paths.clone());
+                    unsafe {
+                        let _ = SetTimer(
+                            None,
+                            ROTATION_TIMER_ID,
+                            ROTATION_TICK_MS,
+                            Some(rotation_timer),
+                        );
+                    }
+                    rotation::reset_schedule();
+                    rotation::sanitize_items(&push_library_paths);
+                    backfill_thumbnails(&push_library_paths);
+                    if startup_preferences.playlist.enabled
+                        && let Err(err) = rotation::apply_current(&push_library_paths)
+                    {
+                        warn!("could not align the playlist on startup: {err:?}");
+                    }
                     if let Ok(snapshot) = library_snapshot(&push_library_paths) {
                         let payload = serde_json::json!({
                             "type": "library",
@@ -579,6 +794,9 @@ fn run(paths: Paths) -> Result<()> {
     })?;
 
     octos_win::run_message_loop();
+    unsafe {
+        let _ = KillTimer(None, ROTATION_TIMER_ID);
+    }
     // Flush the latest window placement and session state before tearing down.
     flush_preferences(&flush_paths);
     octos_win::wallpaper::shutdown();
@@ -714,7 +932,7 @@ fn snapshot_preferences() -> Option<Preferences> {
 
 /// Queue a snapshot; the writer coalesces bursts (slider drags, window moves)
 /// and writes after 250ms of quiet.
-fn save_preferences(paths: &Paths) {
+pub(crate) fn save_preferences(paths: &Paths) {
     let Some(preferences) = snapshot_preferences() else {
         return;
     };
@@ -754,7 +972,7 @@ fn flush_preferences(paths: &Paths) {
     }
 }
 
-fn stored_options(folder: &str) -> Option<OptionsMap> {
+pub(crate) fn stored_options(folder: &str) -> Option<OptionsMap> {
     PREFERENCES
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
@@ -797,7 +1015,30 @@ fn apply_monitor_mod(paths: &Paths, monitor: &str, folder: Option<&str>) -> anyh
     Ok(())
 }
 
-fn push_library(paths: &Paths) {
+/// Generate missing card thumbnails off the UI thread. The window procedure
+/// pushes a fresh snapshot once the files exist.
+fn backfill_thumbnails(paths: &Paths) {
+    if THUMBNAIL_BACKFILL_RUNNING.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    let wallpapers = paths.wallpapers.clone();
+    let spawned = std::thread::Builder::new()
+        .name("octos-thumbnails".into())
+        .spawn(move || {
+            let generated = octos_storage::ensure_all(&wallpapers);
+            THUMBNAIL_BACKFILL_RUNNING.store(false, Ordering::SeqCst);
+            if generated > 0 {
+                info!("generated {generated} wallpaper thumbnail(s)");
+                octos_win::notify_library_changed();
+            }
+        });
+    if let Err(err) = spawned {
+        THUMBNAIL_BACKFILL_RUNNING.store(false, Ordering::SeqCst);
+        warn!("could not start the thumbnail backfill: {err}");
+    }
+}
+
+pub(crate) fn push_library(paths: &Paths) {
     if let Ok(snapshot) = library_snapshot(paths)
         && let Ok(payload) = serde_json::to_string(&serde_json::json!({
             "type": "library",
@@ -924,7 +1165,7 @@ fn library_snapshot(paths: &Paths) -> anyhow::Result<serde_json::Value> {
     let octos_core::catalog::ScanReport { mods, errors } = catalog::scan(&paths.wallpapers)?;
     let mods: Vec<_> = mods
         .into_iter()
-        .filter(|card| card.folder_name != "conformance")
+        .filter(|card| card.folder_name != "conformance" && card.folder_name != "gradient")
         .collect();
     {
         let guard = PREFERENCES
@@ -948,13 +1189,61 @@ fn library_snapshot(paths: &Paths) -> anyhow::Result<serde_json::Value> {
         "library snapshot: {} mod(s), monitors={monitors:?}, selected={selected:?}",
         mods.len()
     );
+    let playlist = playlist_snapshot(&mods);
     Ok(serde_json::json!({
         "mods": mods,
         "monitors": monitors,
+        "monitorNames": octos_win::monitor_names(),
         "selected": selected,
         "options": octos_win::wallpaper::all_options(),
         "errors": errors.iter().map(ToString::to_string).collect::<Vec<_>>(),
+        "playlist": playlist,
     }))
+}
+
+fn library_response(paths: &Paths) -> Option<UiResponse> {
+    match library_snapshot(paths) {
+        Ok(data) => Some(UiResponse::Library { data }),
+        Err(err) => Some(UiResponse::Error {
+            message: format!("{err}"),
+        }),
+    }
+}
+
+/// Rotation state for the UI. `missing` keeps entries that no longer resolve so
+/// the list does not silently lose wallpapers while a drive is offline.
+fn playlist_snapshot(mods: &[catalog::ModCard]) -> serde_json::Value {
+    let guard = PREFERENCES
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let Some(preferences) = guard.as_ref() else {
+        return serde_json::json!({
+            "enabled": false,
+            "items": [],
+            "intervalSeconds": octos_core::playlist::DEFAULT_INTERVAL_SECONDS,
+            "random": false,
+            "current": null,
+            "missing": [],
+        });
+    };
+    let playlist = &preferences.playlist;
+    let missing: Vec<&String> = playlist
+        .items
+        .iter()
+        .filter(|key| {
+            !mods.iter().any(|card| {
+                card.entry_url.is_some() && card.folder_path.to_string_lossy() == key.as_str()
+            })
+        })
+        .collect();
+    serde_json::json!({
+        "enabled": playlist.enabled,
+        "items": playlist.items,
+        "intervalSeconds": playlist.interval_seconds,
+        "random": playlist.random,
+        "current": playlist.current,
+        "missing": missing,
+    })
 }
 
 fn set_monitor_mod(paths: &Paths, monitor_id: &str, folder_path: &str) -> anyhow::Result<()> {

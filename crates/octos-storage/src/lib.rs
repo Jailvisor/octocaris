@@ -16,12 +16,14 @@ pub mod image;
 pub mod install;
 pub mod prefs;
 pub mod template;
+pub mod thumbnail;
 
 pub use atomic::write_atomic;
 pub use image::{install_image, is_image_file};
 pub use install::{InstallError, install_folder, install_zip, remove_mod};
 pub use prefs::{PrefsWriter, load_preferences, save_preferences};
 pub use template::create_mod_template;
+pub use thumbnail::{ensure_all, ensure_thumbnail, has_thumbnail, thumbnail_path, write_thumbnail};
 
 use std::path::{Path, PathBuf};
 

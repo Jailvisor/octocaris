@@ -106,7 +106,13 @@
 - **不写** `HideIcons` 注册表；那是用户设置，Explorer 自己维护。写入会与用户的“显示桌面图标”设置打架。
 - App 的 Settings 开关调用 Rust API；壁纸侧的 `System.setDesktopIconVisibility` JS 封装在 M3 接。
 
-### 4.5 `GetParent` 诊断误用
+### 4.5 Chrome 覆盖层误伤全屏浏览器
+
+- **偏差**：`make_chrome_overlays_click_through` 只按窗口类 `Chrome_WidgetWin_*` + 可见 + 与显示器矩形重合来筛选，没有检查窗口属于哪个进程。Chrome/Edge 的浏览器窗口也是这个类，全屏时矩形正好等于显示器，于是被加上 `WS_EX_LAYERED | WS_EX_TRANSPARENT`，表现为网页掉到桌面层、鼠标点不动、“网页变成壁纸”；`is_fullscreen` 又无条件忽略所有 `Chrome_WidgetWin_*`，全屏浏览器不会被当成全屏应用。
+- **修复**：用 `CreateToolhelp32Snapshot` 沿父进程链判断窗口是否属于 `octos.exe` 的 WebView2 进程（`octos-win::is_our_webview_window`）。只有自己的覆盖层会被改成点击穿透；其它 Chrome/Edge 窗口继续走正常全屏检测，全屏时壁纸按规则隐藏。
+- **证据**：用一个独立进程创建类名为 `Chrome_WidgetWin_1`、矩形等于 2880×1800 的测试窗口，5 秒内 ex-style 保持 `0x100`（未被修改），同时日志出现 `monitor \\.\DISPLAY2 fullscreen=true/false`；自己的 `msedgewebview2` 覆盖层仍有 `made WebView2 overlay ... click-through` 日志。测试脚本：`E:\file\octos\test-foreign-chrome-window.ps1`。
+
+### 4.6 `GetParent` 诊断误用
 
 - **偏差**：`WS_POPUP` + `SetParent` 的窗口 `GetParent` 返回 0。
 - **修复**：诊断用 `EnumChildWindows`/`GetAncestor`；不在生产逻辑里依赖 `GetParent` 判断父级。

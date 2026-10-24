@@ -12,6 +12,7 @@ use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
 use serde_json::json;
+use tracing::warn;
 
 use crate::install::InstallError;
 
@@ -46,11 +47,13 @@ pub fn install_image(source: &Path, wallpapers_root: &Path) -> Result<PathBuf, I
         });
     }
 
+    // Wallpaper sites often keep JPEG/WebP bytes under a `.png` name, so trust
+    // the content signature instead of the extension and generate the mod file
+    // with the detected format.
     let mut header = [0u8; 16];
     let read = File::open(source)?.read(&mut header)?;
-    if !valid_magic(&extension, &header[..read]) {
-        return Err(InstallError::InvalidImage(source.to_path_buf()));
-    }
+    let format = detect_format(&header[..read])
+        .ok_or_else(|| InstallError::InvalidImage(source.to_path_buf()))?;
 
     let canonical = source.canonicalize()?;
     let mut hasher = DefaultHasher::new();
@@ -92,9 +95,19 @@ pub fn install_image(source: &Path, wallpapers_root: &Path) -> Result<PathBuf, I
     let _ = fs::remove_dir_all(&staging);
     fs::create_dir_all(&staging)?;
 
-    let image_name = format!("image.{extension}");
+    let image_name = format!("image.{format}");
     let result = (|| -> Result<PathBuf, InstallError> {
         fs::copy(source, staging.join(&image_name))?;
+        // Cards load this instead of the full-size original.
+        if let Err(err) = crate::thumbnail::write_thumbnail(
+            &staging.join(&image_name),
+            &staging.join("thumbnail.jpg"),
+        ) {
+            warn!(
+                "could not create a thumbnail for {}: {err}",
+                source.display()
+            );
+        }
         let config = json!({
             "name": stem,
             "author": "",
@@ -149,14 +162,19 @@ fn sanitize_slug(stem: &str) -> String {
     slug.chars().take(40).collect()
 }
 
-fn valid_magic(extension: &str, header: &[u8]) -> bool {
-    match extension {
-        "png" => header.starts_with(&[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A]),
-        "jpg" | "jpeg" => header.starts_with(&[0xFF, 0xD8, 0xFF]),
-        "gif" => header.starts_with(b"GIF87a") || header.starts_with(b"GIF89a"),
-        "webp" => header.len() >= 12 && &header[0..4] == b"RIFF" && &header[8..12] == b"WEBP",
-        "bmp" => header.starts_with(b"BM"),
-        _ => false,
+fn detect_format(header: &[u8]) -> Option<&'static str> {
+    if header.starts_with(&[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A]) {
+        Some("png")
+    } else if header.starts_with(&[0xFF, 0xD8, 0xFF]) {
+        Some("jpg")
+    } else if header.starts_with(b"GIF87a") || header.starts_with(b"GIF89a") {
+        Some("gif")
+    } else if header.len() >= 12 && &header[0..4] == b"RIFF" && &header[8..12] == b"WEBP" {
+        Some("webp")
+    } else if header.starts_with(b"BM") {
+        Some("bmp")
+    } else {
+        None
     }
 }
 
@@ -247,6 +265,26 @@ mod tests {
     }
 
     #[test]
+    fn installs_a_thumbnail_for_valid_images() {
+        use image::{Rgba, RgbaImage};
+
+        let temp = tempdir().unwrap();
+        let source = temp.path().join("photo.png");
+        RgbaImage::from_pixel(640, 360, Rgba([10, 200, 30, 255]))
+            .save(&source)
+            .unwrap();
+        let wallpapers = temp.path().join("wallpapers");
+
+        let installed = install_image(&source, &wallpapers).unwrap();
+
+        assert!(installed.join("thumbnail.jpg").is_file());
+        let config: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(installed.join("octos.json")).unwrap())
+                .unwrap();
+        assert_eq!(config["image"], "image.png");
+    }
+
+    #[test]
     fn duplicate_imports_get_distinct_folders() {
         let temp = tempdir().unwrap();
         let source = temp.path().join("photo.png");
@@ -286,6 +324,25 @@ mod tests {
         assert!(is_image_file(Path::new("a.webp")));
         assert!(!is_image_file(Path::new("a.txt")));
         assert!(!is_image_file(Path::new("a")));
+    }
+
+    #[test]
+    fn accepts_content_that_does_not_match_the_extension() {
+        let temp = tempdir().unwrap();
+        let source = temp.path().join("mislabelled.png");
+        let mut bytes = vec![0xFF, 0xD8, 0xFF, 0xE0];
+        bytes.extend_from_slice(&[0u8; 28]);
+        write_image(&source, &bytes);
+        let wallpapers = temp.path().join("wallpapers");
+
+        let installed = install_image(&source, &wallpapers).unwrap();
+
+        assert!(installed.join("image.jpg").is_file());
+        assert!(!installed.join("image.png").exists());
+        let config: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(installed.join("octos.json")).unwrap())
+                .unwrap();
+        assert_eq!(config["image"], "image.jpg");
     }
 
     #[test]

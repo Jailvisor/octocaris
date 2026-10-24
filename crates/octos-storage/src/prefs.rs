@@ -175,7 +175,7 @@ mod tests {
     fn missing_file_is_default() {
         let temp = tempdir().unwrap();
         let preferences = load_preferences(&temp.path().join("preferences.json"));
-        assert_eq!(preferences.version, 2);
+        assert_eq!(preferences.version, 3);
         assert!(preferences.selected.is_empty());
     }
 
@@ -238,7 +238,7 @@ mod tests {
         std::fs::write(&path, "{ not json").unwrap();
 
         let preferences = load_preferences(&path);
-        assert_eq!(preferences.version, 2);
+        assert_eq!(preferences.version, 3);
         assert!(!path.exists());
         let backups = std::fs::read_dir(temp.path())
             .unwrap()

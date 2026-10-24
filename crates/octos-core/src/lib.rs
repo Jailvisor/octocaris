@@ -26,4 +26,6 @@ pub mod session;
 
 pub mod storage_scope;
 
+pub mod playlist;
+
 pub mod prefs;

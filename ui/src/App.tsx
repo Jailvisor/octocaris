@@ -1,20 +1,62 @@
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import {
   isHosted,
   send,
   subscribe,
   type LibrarySnapshot,
   type ModCard,
+  type PlaylistSnapshot,
   type SettingsSnapshot,
   type OptionSpec,
 } from './bridge'
 import { setLanguage, type AppLanguage } from './i18n'
 
 type Tab = 'library' | 'settings'
-type HostState = 'preview' | 'waiting' | 'connected' | 'error'
 type NoticeTone = 'error' | 'success' | 'info'
 type Notice = { message: string; tone: NoticeTone }
+
+const DEFAULT_PLAYLIST: PlaylistSnapshot = {
+  enabled: false,
+  items: [],
+  intervalSeconds: 30 * 60,
+  random: false,
+  current: null,
+  missing: [],
+}
+
+function splitInterval(seconds: number): { minutes: number; seconds: number } {
+  const total = Math.max(0, Math.floor(seconds))
+  return { minutes: Math.floor(total / 60), seconds: total % 60 }
+}
+
+function monitorLabel(monitor: string, names?: Record<string, string>) {
+  const name = names?.[monitor]?.trim()
+  return name ? name : prettyMonitor(monitor)
+}
+
+function monitorOptions(monitors: string[], names?: Record<string, string>) {
+  const labels = monitors.map((monitor) => monitorLabel(monitor, names))
+  return monitors.map((monitor, index) => {
+    const label = labels[index]
+    const duplicate = labels.filter((other) => other === label).length > 1
+    return {
+      value: monitor,
+      label: duplicate ? `${label} · ${prettyMonitor(monitor)}` : label,
+    }
+  })
+}
+
+function moveInList<T>(items: T[], from: number, to: number): T[] {
+  if (to < 0 || to >= items.length || from === to) {
+    return items
+  }
+  const next = items.slice()
+  const [item] = next.splice(from, 1)
+  next.splice(to, 0, item)
+  return next
+}
 
 function LibraryIcon() {
   return (
@@ -29,8 +71,8 @@ function LibraryIcon() {
 function SettingsIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
-      <circle cx="12" cy="12" r="3.2" />
-      <path d="M12 2.8v3M12 18.2v3M2.8 12h3M18.2 12h3M5.5 5.5l2.1 2.1M16.4 16.4l2.1 2.1M18.5 5.5l-2.1 2.1M7.6 16.4l-2.1 2.1" />
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
     </svg>
   )
 }
@@ -65,15 +107,18 @@ function ImageIcon() {
 function RefreshIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M20 11a8 8 0 1 0-2.3 6.3M20 5v6h-6" />
+      <path d="M20 11a8 8 0 1 0-2.3 5.7" />
+      <path d="M20 5v6h-6" />
     </svg>
   )
 }
 
-function CheckIcon() {
+function EyeIcon({ open }: { open: boolean }) {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="m5 12.5 4.2 4.2L19 7" />
+      <path d="M2 12s3.5-6.5 10-6.5S22 12 22 12s-3.5 6.5-10 6.5S2 12 2 12Z" />
+      <circle cx="12" cy="12" r="2.8" />
+      {!open && <path d="M4 4l16 16" />}
     </svg>
   )
 }
@@ -96,56 +141,7 @@ function InfoIcon() {
   )
 }
 
-function StatusCard({
-  state,
-  version,
-  wallpaperActive,
-}: {
-  state: HostState
-  version: string | null
-  wallpaperActive: boolean
-}) {
-  const { t } = useTranslation()
-  const labels: Record<HostState, string> = {
-    preview: t('bridge.preview'),
-    waiting: t('bridge.waiting'),
-    connected: t('bridge.connected'),
-    error: t('bridge.error'),
-  }
-
-  return (
-    <div className="panel status-panel">
-      <div className="panel-heading">
-        <div>
-          <p className="eyebrow">{t('bridge.eyebrow')}</p>
-          <h3>{labels[state]}</h3>
-        </div>
-        <span className={`status-dot ${state}`} />
-      </div>
-      <dl className="meta">
-        <div>
-          <dt>{t('bridge.protocol')}</dt>
-          <dd>0.1</dd>
-        </div>
-        <div>
-          <dt>{t('bridge.hostBuild')}</dt>
-          <dd>{version ?? '—'}</dd>
-        </div>
-        <div>
-          <dt>{t('bridge.transport')}</dt>
-          <dd>{isHosted() ? t('bridge.webview') : t('bridge.mock')}</dd>
-        </div>
-        <div>
-          <dt>{t('bridge.wallpaper')}</dt>
-          <dd>{wallpaperActive ? t('bridge.gradientActive') : t('bridge.cleared')}</dd>
-        </div>
-      </dl>
-    </div>
-  )
-}
-
 function EmptyLibrary({
-  status,
   active,
   onShow,
   onClear,
@@ -153,7 +149,6 @@ function EmptyLibrary({
   onImport,
   onAddImage,
 }: {
-  status: HostState
   active: boolean
   onShow: () => void
   onClear: () => void
@@ -194,15 +189,42 @@ function EmptyLibrary({
           {t('common.clearWallpaper')}
         </button>
       </div>
-      <p className="tiny">
-        {t('library.bridgeStatus')}: <strong>{t(`bridge.${status}`)}</strong>
-      </p>
     </div>
   )
 }
 
 function prettyMonitor(id: string) {
   return id.replace(/^\\\\.\\/, '') || id
+}
+
+const KNOWN_OPTION_LABELS: Record<string, string> = {
+  fit: 'library.optionLabel.fit',
+}
+
+const KNOWN_OPTION_VALUES: Record<string, Record<string, string>> = {
+  fit: {
+    cover: 'library.optionValue.cover',
+    contain: 'library.optionValue.contain',
+    fill: 'library.optionValue.fill',
+  },
+}
+
+function translateOptionLabel(id: string, fallback: string, t: TFunction) {
+  const key = KNOWN_OPTION_LABELS[id]
+  if (!key) {
+    return fallback
+  }
+  const translated = t(key)
+  return translated === key ? fallback : translated
+}
+
+function translateOptionValue(id: string, option: string, t: TFunction) {
+  const key = KNOWN_OPTION_VALUES[id]?.[option]
+  if (!key) {
+    return option
+  }
+  const translated = t(key)
+  return translated === key ? option : translated
 }
 
 function OptionControl({
@@ -214,8 +236,10 @@ function OptionControl({
   spec: OptionSpec
   onChange: (id: string, value: unknown) => void
 }) {
+  const { t } = useTranslation()
   const type = String(spec.type ?? 'checkbox')
-  const label = typeof spec.label === 'string' && spec.label ? spec.label : id
+  const fallbackLabel = typeof spec.label === 'string' && spec.label ? spec.label : id
+  const label = translateOptionLabel(id, fallbackLabel, t)
   const value = spec.value
   const selectOptions = Array.isArray(spec.options)
     ? spec.options.filter((option): option is string => typeof option === 'string')
@@ -265,7 +289,7 @@ function OptionControl({
         <select value={String(value ?? '')} onChange={(event) => onChange(id, event.target.value)}>
           {selectOptions.map((option) => (
             <option key={option} value={option}>
-              {option}
+              {translateOptionValue(id, option, t)}
             </option>
           ))}
         </select>
@@ -303,36 +327,38 @@ function ModDetail({
   card,
   options,
   monitors,
+  monitorNames,
   selectedMonitor,
   selected,
-  mods,
   onMonitorChange,
   onApply,
   onRemove,
   onOptionChange,
+  playlistEnabled,
 }: {
   card: ModCard
   options: Record<string, OptionSpec>
   monitors: string[]
+  monitorNames?: Record<string, string>
   selectedMonitor: string
   selected: Record<string, string>
-  mods: ModCard[]
   onMonitorChange: (monitor: string) => void
   onApply: () => void
   onRemove: () => void
   onOptionChange: (id: string, value: unknown) => void
+  playlistEnabled: boolean
 }) {
   const { t } = useTranslation()
+  const [confirmRemove, setConfirmRemove] = useState(false)
   const entries = Object.entries(options)
   const inUse = Object.values(selected).includes(card.folder_path)
+
+  useEffect(() => setConfirmRemove(false), [card.folder_path])
 
   return (
     <div className="panel mod-detail">
       <div className="detail-heading">
-        <div>
-          <p className="eyebrow">{t('library.detail')}</p>
-          <h2>{card.name}</h2>
-        </div>
+        <h2>{card.name}</h2>
         {inUse && (
           <span className="pill success">
             <span className="status-dot connected" />
@@ -340,11 +366,6 @@ function ModDetail({
           </span>
         )}
       </div>
-      <p className="muted">{card.description || t('library.noDescription')}</p>
-      <p className="tiny">
-        {t('library.author')}: {card.author || t('library.unknownAuthor')}
-        {card.version ? ` · ${t('library.version')} ${card.version}` : ''}
-      </p>
       {!card.entry_url && <p className="warn-text">{t('library.notRunnable')}</p>}
 
       <div className="apply-row">
@@ -355,9 +376,9 @@ function ModDetail({
             onChange={(event) => onMonitorChange(event.target.value)}
             disabled={monitors.length === 0}
           >
-            {monitors.map((monitor) => (
-              <option key={monitor} value={monitor}>
-                {prettyMonitor(monitor)}
+            {monitorOptions(monitors, monitorNames).map((option) => (
+              <option key={option.value} value={option.value} title={option.value}>
+                {option.label}
               </option>
             ))}
           </select>
@@ -369,27 +390,26 @@ function ModDetail({
         >
           {t('library.setWallpaper')}
         </button>
-        <button className="button ghost danger" onClick={onRemove}>
-          {t('library.remove')}
-        </button>
       </div>
 
-      <div className="monitor-map">
-        <h3 className="section-title">{t('library.monitorMap')}</h3>
-        {Object.entries(selected).length === 0 ? (
-          <p className="tiny">{t('library.noOptions')}</p>
+      <div className="detail-actions">
+        {confirmRemove ? (
+          <span className="confirm-inline">
+            <span className="tiny">{t('library.removeConfirm')}</span>
+            <button className="button ghost danger-text" onClick={onRemove}>
+              {t('library.confirm')}
+            </button>
+            <button className="button ghost" onClick={() => setConfirmRemove(false)}>
+              {t('library.cancel')}
+            </button>
+          </span>
         ) : (
-          Object.entries(selected).map(([monitor, path]) => {
-            const mod = mods.find((candidate) => candidate.folder_path === path)
-            return (
-              <div className="monitor-chip" key={monitor}>
-                <span>{prettyMonitor(monitor)}</span>
-                <strong>{mod?.name ?? path}</strong>
-              </div>
-            )
-          })
+          <button className="button ghost quiet-danger" onClick={() => setConfirmRemove(true)}>
+            {t('library.remove')}
+          </button>
         )}
       </div>
+      {playlistEnabled && <p className="tiny playlist-hint">{t('playlist.overrideHint')}</p>}
 
       <h3 className="section-title">{t('library.options')}</h3>
       {entries.length === 0 ? (
@@ -410,13 +430,17 @@ function ModCardTile({
   index,
   selected,
   tabbable,
+  inPlaylist,
   onSelect,
+  onToggle,
 }: {
   card: ModCard
   index: number
   selected: boolean
   tabbable: boolean
+  inPlaylist: boolean
   onSelect: (path: string) => void
+  onToggle: (path: string) => void
 }) {
   const { t } = useTranslation()
   const [imageState, setImageState] = useState<'idle' | 'ready' | 'error'>(
@@ -428,56 +452,66 @@ function ModCardTile({
   }, [card.image_url])
 
   return (
-    <button
-      type="button"
-      role="option"
-      aria-selected={selected}
-      tabIndex={tabbable ? 0 : -1}
-      data-mod-card
-      data-index={index}
-      className={selected ? 'mod-card selected' : 'mod-card'}
-      onClick={() => onSelect(card.folder_path)}
-      onFocus={() => onSelect(card.folder_path)}
-    >
-      <div className="mod-card-art">
-        {card.image_url && imageState !== 'error' && (
-          <img
-            src={card.image_url}
-            alt=""
-            loading="lazy"
-            decoding="async"
-            className={imageState === 'ready' ? 'loaded' : undefined}
-            onLoad={() => setImageState('ready')}
-            onError={() => setImageState('error')}
-          />
-        )}
-        {imageState !== 'ready' && (
-          <span className="mod-card-initial" aria-hidden="true">
-            {card.name.slice(0, 1).toUpperCase()}
-          </span>
-        )}
-        {selected && (
-          <span className="mod-card-check" aria-hidden="true">
-            <CheckIcon />
-          </span>
-        )}
-      </div>
-      <div className="mod-card-body">
-        <h3>{card.name}</h3>
-        <p>{card.author || t('library.unknownAuthor')}</p>
-      </div>
-    </button>
+    <div className="mod-card-wrap">
+      <button
+        type="button"
+        role="option"
+        aria-selected={selected}
+        tabIndex={tabbable ? 0 : -1}
+        data-mod-card
+        data-index={index}
+        className={selected ? 'mod-card selected' : 'mod-card'}
+        onClick={() => onSelect(card.folder_path)}
+        onFocus={() => onSelect(card.folder_path)}
+      >
+        <div className="mod-card-art">
+          {card.image_url && imageState !== 'error' && (
+            <img
+              src={card.image_url}
+              alt=""
+              draggable={false}
+              loading="lazy"
+              decoding="async"
+              className={imageState === 'ready' ? 'loaded' : undefined}
+              onLoad={() => setImageState('ready')}
+              onError={() => setImageState('error')}
+            />
+          )}
+          {imageState !== 'ready' && (
+            <span className="mod-card-initial" aria-hidden="true">
+              {card.name.slice(0, 1).toUpperCase()}
+            </span>
+          )}
+        </div>
+        <div className="mod-card-body">
+          <h3>{card.name}</h3>
+        </div>
+      </button>
+      <input
+        type="checkbox"
+        className="rotation-check"
+        checked={inPlaylist}
+        disabled={!card.entry_url}
+        aria-label={inPlaylist ? t('playlist.removeFrom') : t('playlist.addTo')}
+        title={inPlaylist ? t('playlist.removeFrom') : t('playlist.addTo')}
+        onChange={() => onToggle(card.folder_path)}
+      />
+    </div>
   )
 }
 
 function ModGrid({
   mods,
   selectedPath,
+  playlistPaths,
   onSelect,
+  onToggle,
 }: {
   mods: ModCard[]
   selectedPath: string | null
+  playlistPaths: string[]
   onSelect: (path: string) => void
+  onToggle: (path: string) => void
 }) {
   const { t } = useTranslation()
   const gridRef = useRef<HTMLDivElement>(null)
@@ -492,7 +526,11 @@ function ModGrid({
       return
     }
     const cards = Array.from(grid.querySelectorAll<HTMLButtonElement>('[data-mod-card]'))
-    const current = cards.indexOf(document.activeElement as HTMLButtonElement)
+    const active = document.activeElement as HTMLElement | null
+    const activeCard =
+      active?.closest<HTMLElement>('.mod-card-wrap')?.querySelector<HTMLButtonElement>('[data-mod-card]') ??
+      (active as HTMLButtonElement | null)
+    const current = activeCard ? cards.indexOf(activeCard) : -1
     if (current < 0) {
       return
     }
@@ -529,7 +567,9 @@ function ModGrid({
           tabbable={
             card.folder_path === selectedPath || (!selectedPath && index === 0)
           }
+          inPlaylist={playlistPaths.includes(card.folder_path)}
           onSelect={onSelect}
+          onToggle={onToggle}
         />
       ))}
     </div>
@@ -597,20 +637,18 @@ function SettingSwitch({
 function SettingsView({
   desktopIcons,
   onToggleDesktopIcons,
+  onOpenFolder,
   settings,
   onSetSetting,
 }: {
   desktopIcons: boolean
   onToggleDesktopIcons: () => void
+  onOpenFolder: () => void
   settings: SettingsSnapshot
   onSetSetting: (key: keyof SettingsSnapshot, value: boolean | number) => void
 }) {
   const { t, i18n } = useTranslation()
   const language: AppLanguage = i18n.language.toLowerCase().startsWith('zh') ? 'zh-CN' : 'en'
-  const pendingRows: Array<[string, string, string]> = [
-    [t('settings.allowNotifications.title'), t('settings.allowNotifications.desc'), 'M8'],
-  ]
-
   return (
     <div className="panel settings-panel">
       <div className="setting-row">
@@ -619,7 +657,6 @@ function SettingsView({
           <p>{t('settings.showDesktopIcons.desc')}</p>
         </div>
         <div className="setting-tail">
-          <span className="badge">M2</span>
           <button
             className={desktopIcons ? 'switch interactive active' : 'switch interactive'}
             role="switch"
@@ -633,11 +670,21 @@ function SettingsView({
       </div>
       <div className="setting-row">
         <div>
+          <h3>{t('settings.openFolder.title')}</h3>
+          <p>{t('settings.openFolder.desc')}</p>
+        </div>
+        <div className="setting-tail">
+          <button type="button" className="button" onClick={onOpenFolder}>
+            {t('settings.openFolder.action')}
+          </button>
+        </div>
+      </div>
+      <div className="setting-row">
+        <div>
           <h3>{t('settings.language.title')}</h3>
           <p>{t('settings.language.desc')}</p>
         </div>
         <div className="setting-tail">
-          <span className="badge">M4</span>
           <select
             className="language-select"
             value={language}
@@ -655,7 +702,6 @@ function SettingsView({
           <p>{t('settings.pauseFullscreen.desc')}</p>
         </div>
         <div className="setting-tail">
-          <span className="badge">M4</span>
           <SettingSwitch
             checked={settings.pauseFullscreen}
             label={t('settings.pauseFullscreen.title')}
@@ -669,7 +715,6 @@ function SettingsView({
           <p>{t('settings.startWithWindows.desc')}</p>
         </div>
         <div className="setting-tail">
-          <span className="badge">M4</span>
           <SettingSwitch
             checked={settings.runOnStartup}
             label={t('settings.startWithWindows.title')}
@@ -683,7 +728,6 @@ function SettingsView({
           <p>{t('settings.memorySaver.desc')}</p>
         </div>
         <div className="setting-tail">
-          <span className="badge">M5</span>
           <SettingSwitch
             checked={settings.memorySaver}
             label={t('settings.memorySaver.title')}
@@ -697,7 +741,6 @@ function SettingsView({
           <p>{t('settings.maxFps.desc')}</p>
         </div>
         <div className="setting-tail">
-          <span className="badge">M5</span>
           <select
             className="language-select"
             value={settings.maxFps}
@@ -717,7 +760,6 @@ function SettingsView({
           <p>{t('settings.enableGpu.desc')}</p>
         </div>
         <div className="setting-tail">
-          <span className="badge">M4</span>
           <SettingSwitch
             checked={settings.enableGpu}
             label={t('settings.enableGpu.title')}
@@ -725,31 +767,246 @@ function SettingsView({
           />
         </div>
       </div>
-      {pendingRows.map(([title, description, milestone]) => (
-        <div className="setting-row" key={title}>
-          <div>
-            <h3>{title}</h3>
-            <p>{description}</p>
-          </div>
-          <div className="setting-tail">
-            <span className="badge">{milestone}</span>
-            <span className="switch" aria-hidden="true">
-              <span />
-            </span>
-          </div>
-        </div>
-      ))}
     </div>
   )
 }
 
+function PlaylistPanel({
+  playlist,
+  mods,
+  onToggleEnabled,
+  onSetInterval,
+  onSetRandom,
+  onSetItems,
+  onSelectAll,
+  onNext,
+}: {
+  playlist: PlaylistSnapshot
+  mods: ModCard[]
+  onToggleEnabled: () => void
+  onSetInterval: (seconds: number) => void
+  onSetRandom: (random: boolean) => void
+  onSetItems: (items: string[]) => void
+  onSelectAll: () => void
+  onNext: () => void
+}) {
+  const { t } = useTranslation()
+  const [expanded, setExpanded] = useState(false)
+  const initialInterval = splitInterval(playlist.intervalSeconds)
+  const [intervalMinutes, setIntervalMinutes] = useState(initialInterval.minutes)
+  const [intervalSeconds, setIntervalSeconds] = useState(initialInterval.seconds)
+
+  useEffect(() => {
+    const parts = splitInterval(playlist.intervalSeconds)
+    setIntervalMinutes(parts.minutes)
+    setIntervalSeconds(parts.seconds)
+  }, [playlist.intervalSeconds])
+
+  if (mods.length === 0) {
+    return (
+      <section className="panel playlist-panel playlist-empty">
+        <p className="tiny">{t('playlist.emptyHint')}</p>
+      </section>
+    )
+  }
+
+  const cards = new Map(mods.map((card) => [card.folder_path, card]))
+  const items = playlist.items
+  const runnable = mods.filter((card) => card.entry_url)
+  const status = !playlist.enabled
+    ? t('playlist.status.inactive')
+    : items.length < 2
+      ? t('playlist.status.needTwo')
+      : playlist.missing.length > 0
+        ? t('playlist.status.missing', { count: playlist.missing.length })
+        : t('playlist.status.active', { count: items.length })
+
+  function commitInterval(minutes: number, seconds: number) {
+    const safeMinutes = Number.isFinite(minutes) ? Math.max(0, Math.floor(minutes)) : 0
+    const safeSeconds = Number.isFinite(seconds) ? Math.min(59, Math.max(0, Math.floor(seconds))) : 0
+    onSetInterval(safeMinutes * 60 + safeSeconds)
+  }
+
+  return (
+    <section className="panel playlist-panel" aria-label={t('playlist.panelTitle')}>
+      <div className="playlist-head">
+        <div>
+          <h2>{t('playlist.panelTitle')}</h2>
+          <p className="tiny">{status}</p>
+        </div>
+        <div className="setting-tail">
+          <button
+            type="button"
+            className={
+              playlist.enabled && items.length > 0
+                ? 'switch interactive active'
+                : 'switch interactive'
+            }
+            role="switch"
+            aria-checked={playlist.enabled && items.length > 0}
+            aria-label={t('playlist.enable.title')}
+            disabled={items.length === 0}
+            onClick={onToggleEnabled}
+          >
+            <span />
+          </button>
+        </div>
+      </div>
+
+      <div className="playlist-controls">
+        <div className="playlist-control">
+          <span>{t('playlist.interval.title')}</span>
+          <div className="interval-inputs">
+            <input
+              type="number"
+              min={0}
+              step={1}
+              value={intervalMinutes}
+              aria-label={t('playlist.interval.unitMinutes')}
+              onChange={(event) => {
+                const next = Number(event.target.value)
+                setIntervalMinutes(next)
+                commitInterval(next, intervalSeconds)
+              }}
+            />
+            <span>{t('playlist.interval.unitMinutes')}</span>
+            <input
+              type="number"
+              min={0}
+              max={59}
+              step={1}
+              value={intervalSeconds}
+              aria-label={t('playlist.interval.unitSeconds')}
+              onChange={(event) => {
+                const next = Number(event.target.value)
+                setIntervalSeconds(next)
+                commitInterval(intervalMinutes, next)
+              }}
+            />
+            <span>{t('playlist.interval.unitSeconds')}</span>
+          </div>
+        </div>
+
+        <div className="playlist-control">
+          <span>{t('playlist.random.title')}</span>
+          <button
+            type="button"
+            className={playlist.random ? 'switch interactive active' : 'switch interactive'}
+            role="switch"
+            aria-checked={playlist.random}
+            aria-label={t('playlist.random.title')}
+            onClick={() => onSetRandom(!playlist.random)}
+          >
+            <span />
+          </button>
+        </div>
+      </div>
+
+      <div className="playlist-head playlist-list-head">
+        <button
+          type="button"
+          className="button ghost"
+          aria-expanded={expanded}
+          onClick={() => setExpanded((value) => !value)}
+        >
+          {t('playlist.list.title', { count: items.length })}
+        </button>
+        <div className="playlist-actions">
+          <button
+            type="button"
+            className="button ghost"
+            onClick={onSelectAll}
+            disabled={
+              runnable.length === 0 ||
+              runnable.every((card) => items.includes(card.folder_path))
+            }
+          >
+            {t('playlist.selectAll')}
+          </button>
+          <button
+            type="button"
+            className="button ghost"
+            onClick={onNext}
+            disabled={items.length < 2}
+          >
+            {t('playlist.next')}
+          </button>
+        </div>
+      </div>
+      <p className="tiny playlist-pick-hint">{t('playlist.pickHint')}</p>
+
+      {expanded &&
+        (items.length === 0 ? (
+          <p className="tiny playlist-empty-hint">{t('playlist.list.empty')}</p>
+        ) : (
+          <ol className="playlist-list">
+            {items.map((path, index) => {
+              const card = cards.get(path)
+              const missing = playlist.missing.includes(path)
+              return (
+                <li
+                  key={path}
+                  className={path === playlist.current ? 'playlist-row current' : 'playlist-row'}
+                >
+                  <span className="playlist-index">{index + 1}</span>
+                  <div className="playlist-thumb">
+                    {card?.image_url ? (
+                      <img src={card.image_url} alt="" draggable={false} loading="lazy" />
+                    ) : (
+                      <span aria-hidden="true">{card?.name.slice(0, 1) ?? '?'}</span>
+                    )}
+                  </div>
+                  <div className="playlist-info">
+                    <strong>{card?.name ?? path}</strong>
+                    {missing && <span className="pill missing">{t('playlist.list.missing')}</span>}
+                  </div>
+                  {path === playlist.current && (
+                    <span className="pill current">{t('playlist.current')}</span>
+                  )}
+                  <div className="playlist-actions">
+                    <button
+                      type="button"
+                      className="icon-button"
+                      aria-label={t('playlist.moveUp')}
+                      disabled={index === 0}
+                      onClick={() => onSetItems(moveInList(items, index, index - 1))}
+                    >
+                      ↑
+                    </button>
+                    <button
+                      type="button"
+                      className="icon-button"
+                      aria-label={t('playlist.moveDown')}
+                      disabled={index === items.length - 1}
+                      onClick={() => onSetItems(moveInList(items, index, index + 1))}
+                    >
+                      ↓
+                    </button>
+                    <button
+                      type="button"
+                      className="icon-button danger"
+                      aria-label={t('playlist.remove')}
+                      onClick={() => onSetItems(items.filter((item) => item !== path))}
+                    >
+                      ×
+                    </button>
+                  </div>
+                </li>
+              )
+            })}
+          </ol>
+        ))}
+    </section>
+  )
+}
+
+
 export default function App() {
   const { t } = useTranslation()
   const [tab, setTab] = useState<Tab>('library')
-  const [hostState, setHostState] = useState<HostState>(isHosted() ? 'waiting' : 'preview')
-  const [version, setVersion] = useState<string | null>(null)
   const [wallpaperActive, setWallpaperActive] = useState(true)
   const [desktopIcons, setDesktopIcons] = useState(true)
+  const [wallpaperVisible, setWallpaperVisible] = useState(true)
   const [settings, setSettings] = useState<SettingsSnapshot>({
     runOnStartup: false,
     enableGpu: true,
@@ -765,10 +1022,50 @@ export default function App() {
   const [notice, setNotice] = useState<Notice | null>(null)
   const installingRef = useRef<'mod' | 'folder' | 'image' | null>(null)
   const installBaselineRef = useRef(0)
+  const refreshPendingRef = useRef(false)
 
   useEffect(() => {
     installingRef.current = installing
   }, [installing])
+
+  useEffect(() => {
+    if (tab !== 'library') {
+      return
+    }
+    function onKeyDown(event: KeyboardEvent) {
+      if (!(event.ctrlKey || event.metaKey)) {
+        return
+      }
+      const target = event.target as HTMLElement | null
+      if (
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.tagName === 'SELECT' ||
+          target.isContentEditable)
+      ) {
+        return
+      }
+      const key = event.key.toLowerCase()
+      if (key === 'a') {
+        event.preventDefault()
+        addAllWallpapers()
+      } else if (key === 'd') {
+        event.preventDefault()
+        clearPlaylist()
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  })
+
+  useEffect(() => {
+    function onDragStart(event: DragEvent) {
+      event.preventDefault()
+    }
+    window.addEventListener('dragstart', onDragStart)
+    return () => window.removeEventListener('dragstart', onDragStart)
+  }, [])
 
   useEffect(() => {
     function onDragOver(event: DragEvent) {
@@ -831,20 +1128,24 @@ export default function App() {
 
     send({ type: 'ping', id: Date.now() })
     send({ type: 'get-desktop-icons' })
+    send({ type: 'get-wallpaper-visibility' })
     send({ type: 'get-settings' })
     send({ type: 'get-library' })
 
     return subscribe((message) => {
-      if (message.type === 'pong') {
-        setVersion(message.version)
-        setHostState('connected')
-      } else if (message.type === 'wallpaper-state') {
+      if (message.type === 'wallpaper-state') {
         setWallpaperActive(message.active)
       } else if (message.type === 'desktop-icons') {
         setDesktopIcons(message.visible)
+      } else if (message.type === 'wallpaper-visibility') {
+        setWallpaperVisible(message.visible)
       } else if (message.type === 'settings') {
         setSettings(message.data)
       } else if (message.type === 'library') {
+        if (refreshPendingRef.current) {
+          refreshPendingRef.current = false
+          setNotice({ message: t('library.refreshed'), tone: 'success' })
+        }
         const wasInstalling = installingRef.current
         const baseline = installBaselineRef.current
         setInstalling(null)
@@ -875,20 +1176,12 @@ export default function App() {
         setInstalling(null)
         setNotice({ message: message.message, tone: 'error' })
       } else if (message.type === 'error') {
+        refreshPendingRef.current = false
         setInstalling(null)
         setNotice({ message: message.message, tone: 'error' })
       }
     })
   }, [])
-
-  function pingHost() {
-    if (!isHosted()) {
-      setHostState('preview')
-      return
-    }
-    setHostState('waiting')
-    send({ type: 'ping', id: Date.now() })
-  }
 
   function showGradient() {
     if (isHosted()) {
@@ -929,11 +1222,8 @@ export default function App() {
     send({ type: 'install-image' })
   }
 
-  function removeMod(folderPath: string, name: string) {
-    if (!isHosted()) {
-      return
-    }
-    if (window.confirm(t('library.removeConfirm', { name }))) {
+  function removeMod(folderPath: string) {
+    if (isHosted()) {
       send({ type: 'remove-mod', folder_path: folderPath })
     }
   }
@@ -963,12 +1253,104 @@ export default function App() {
     }
   }
 
+  function toggleWallpaperVisibility() {
+    const visible = !wallpaperVisible
+    if (isHosted()) {
+      send({ type: 'set-wallpaper-visibility', visible })
+    } else {
+      setWallpaperVisible(visible)
+    }
+  }
+
+  function openWallpapersFolder() {
+    if (isHosted()) {
+      send({ type: 'open-wallpapers-folder' })
+    }
+  }
+
+  function refreshLibrary() {
+    if (isHosted()) {
+      refreshPendingRef.current = true
+      send({ type: 'refresh-library' })
+    } else {
+      setNotice({ message: t('library.refreshed'), tone: 'success' })
+    }
+  }
+
   function toggleDesktopIcons() {
     const next = !desktopIcons
     if (isHosted()) {
       send({ type: 'set-desktop-icons', visible: next })
     } else {
       setDesktopIcons(next)
+    }
+  }
+
+  const playlist = library?.playlist ?? DEFAULT_PLAYLIST
+
+  function mutatePlaylist(message: Record<string, unknown>, patch: Partial<PlaylistSnapshot>) {
+    if (isHosted()) {
+      send(message)
+    } else {
+      setLibrary((current) =>
+        current
+          ? {
+              ...current,
+              playlist: { ...(current.playlist ?? DEFAULT_PLAYLIST), ...patch },
+            }
+          : current,
+      )
+    }
+  }
+
+  function setPlaylistItems(items: string[]) {
+    mutatePlaylist({ type: 'set-playlist-items', items }, { items })
+  }
+
+  function togglePlaylistItem(folderPath: string) {
+    setPlaylistItems(
+      playlist.items.includes(folderPath)
+        ? playlist.items.filter((item) => item !== folderPath)
+        : [...playlist.items, folderPath],
+    )
+  }
+
+  function clearPlaylist() {
+    setPlaylistItems([])
+  }
+
+  function addAllWallpapers() {
+    if (!library) {
+      return
+    }
+    const next = [...playlist.items]
+    for (const card of library.mods) {
+      if (card.entry_url && !next.includes(card.folder_path)) {
+        next.push(card.folder_path)
+      }
+    }
+    setPlaylistItems(next)
+  }
+
+  function togglePlaylistEnabled() {
+    const enabled = !playlist.enabled
+    mutatePlaylist({ type: 'set-playlist-enabled', enabled }, { enabled })
+  }
+
+  function setPlaylistInterval(seconds: number) {
+    mutatePlaylist(
+      { type: 'set-playlist-interval', seconds },
+      { intervalSeconds: seconds },
+    )
+  }
+
+  function setPlaylistRandom(random: boolean) {
+    mutatePlaylist({ type: 'set-playlist-random', random }, { random })
+  }
+
+  function playlistNext() {
+    if (isHosted()) {
+      send({ type: 'playlist-next' })
     }
   }
 
@@ -1005,20 +1387,11 @@ export default function App() {
             <span>{t('nav.settings')}</span>
           </button>
         </nav>
-
-        <div className="sidebar-footer">
-          <span className={`status-dot ${hostState}`} />
-          <span>{isHosted() ? t('common.rustHost') : t('common.previewMode')}</span>
-          <span className="badge">M4</span>
-        </div>
       </aside>
 
       <main>
         <header className="page-header">
           <div>
-            <p className="eyebrow">
-              {tab === 'library' ? t('library.eyebrow') : t('settings.eyebrow')}
-            </p>
             <h1>{tab === 'library' ? t('library.title') : t('settings.title')}</h1>
             <p className="subhead">
               {tab === 'library' ? t('library.subtitle') : t('settings.subtitle')}
@@ -1078,12 +1451,22 @@ export default function App() {
               </span>
             </button>
             <button
-              className="button primary"
-              onClick={pingHost}
-              title={t('common.pingHost')}
+              type="button"
+              className="header-icon"
+              onClick={refreshLibrary}
+              title={t('library.refresh')}
+              aria-label={t('library.refresh')}
             >
               <RefreshIcon />
-              <span>{t('common.pingHost')}</span>
+            </button>
+            <button
+              type="button"
+              className={wallpaperVisible ? 'header-icon' : 'header-icon off'}
+              onClick={toggleWallpaperVisibility}
+              title={wallpaperVisible ? t('library.hideWallpaper') : t('library.showWallpaper')}
+              aria-label={wallpaperVisible ? t('library.hideWallpaper') : t('library.showWallpaper')}
+            >
+              <EyeIcon open={wallpaperVisible} />
             </button>
           </div>
           )}
@@ -1091,6 +1474,18 @@ export default function App() {
 
         {tab === 'library' ? (
           <>
+            {library && (
+              <PlaylistPanel
+                playlist={playlist}
+                mods={library.mods}
+                onToggleEnabled={togglePlaylistEnabled}
+                onSetInterval={setPlaylistInterval}
+                onSetRandom={setPlaylistRandom}
+                onSetItems={setPlaylistItems}
+                onSelectAll={addAllWallpapers}
+                onNext={playlistNext}
+              />
+            )}
             <section className="content-grid" aria-busy={loadingLibrary}>
               {loadingLibrary ? (
                 <>
@@ -1104,7 +1499,9 @@ export default function App() {
                   <ModGrid
                     mods={library.mods}
                     selectedPath={selectedModPath}
+                    playlistPaths={playlist.items}
                     onSelect={setSelectedModPath}
+                    onToggle={togglePlaylistItem}
                   />
                   <div className="mod-detail-stack">
                     {selectedCard && (
@@ -1112,14 +1509,13 @@ export default function App() {
                         card={selectedCard}
                         options={selectedOptions}
                         monitors={library.monitors}
+                        monitorNames={library.monitorNames}
                         selectedMonitor={selectedMonitor}
                         selected={library.selected}
-                        mods={library.mods}
                         onMonitorChange={setSelectedMonitor}
                         onApply={applySelectedMod}
-                        onRemove={() =>
-                          removeMod(selectedCard.folder_path, selectedCard.name)
-                        }
+                        onRemove={() => removeMod(selectedCard.folder_path)}
+                        playlistEnabled={playlist.enabled}
                         onOptionChange={(id, value) =>
                           changeOption(selectedCard.folder_path, id, value)
                         }
@@ -1128,28 +1524,17 @@ export default function App() {
                     {library.errors.length > 0 && (
                       <p className="warn-text">{library.errors.join(' · ')}</p>
                     )}
-                    <StatusCard
-                      state={hostState}
-                      version={version}
-                      wallpaperActive={wallpaperActive}
-                    />
                   </div>
                 </>
               ) : (
                 <>
                   <EmptyLibrary
-                    status={hostState}
                     active={wallpaperActive}
                     onShow={showGradient}
                     onClear={clearWallpaper}
                     onInstall={installMod}
                     onImport={installFolder}
                     onAddImage={installImage}
-                  />
-                  <StatusCard
-                    state={hostState}
-                    version={version}
-                    wallpaperActive={wallpaperActive}
                   />
                 </>
               )}
@@ -1159,15 +1544,11 @@ export default function App() {
           <SettingsView
             desktopIcons={desktopIcons}
             onToggleDesktopIcons={toggleDesktopIcons}
+            onOpenFolder={openWallpapersFolder}
             settings={settings}
             onSetSetting={setSetting}
           />
         )}
-
-        <footer className="footer">
-          <span>{t('footer.left')}</span>
-          <span>{t('footer.right')}</span>
-        </footer>
       </main>
 
       {notice && (

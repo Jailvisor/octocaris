@@ -11,7 +11,7 @@ use octos_core::hooks::{HookEvent, scripts_for_event};
 use octos_core::options::OptionsMap;
 use octos_core::session::Session;
 use octos_protocol::{WallpaperHost, dispatch, options_event, redirect_event};
-use octos_webview::{CompositionDevice, WallpaperWebView, execute_script, post_json};
+use octos_webview::{CompositionDevice, WallpaperWebView, execute_script, navigate, post_json};
 use tracing::{debug, info, warn};
 use webview2_com::Microsoft::Web::WebView2::Win32::{
     COREWEBVIEW2_MOUSE_EVENT_KIND_LEFT_BUTTON_DOWN, COREWEBVIEW2_MOUSE_EVENT_KIND_LEFT_BUTTON_UP,
@@ -433,6 +433,63 @@ pub fn set_monitor_mod_with(
     .ok_or_else(|| anyhow!("wallpaper state is already borrowed"))?
 }
 
+/// Switch every monitor to a new mod without tearing down the WebView2
+/// controllers. Returns how many live webviews were navigated in place.
+pub fn switch_mod_all(
+    mod_key: String,
+    entry_url: String,
+    defaults: OptionsMap,
+    stored: Option<OptionsMap>,
+) -> Result<usize> {
+    with_state(|state| {
+        let mut navigated = 0usize;
+        {
+            let WallpaperState { slots, session, .. } = state;
+            // Load the incoming mod's options before navigating: the
+            // NavigationCompleted handler reads the live session when it emits
+            // options-load, and the page must not see the previous mod's values.
+            session.load_options(mod_key.clone(), &defaults, stored.as_ref());
+            for slot in slots.iter_mut() {
+                session.select(slot.device_name.clone(), mod_key.clone());
+                slot.entry_url = Some(entry_url.clone());
+                slot.user_visible = true;
+                let mut failed = false;
+                if let Some(webview) = slot.webview.as_ref() {
+                    match navigate(&webview.webview, &entry_url) {
+                        Ok(()) => navigated += 1,
+                        Err(err) => {
+                            warn!(
+                                "could not navigate wallpaper for {}: {err:?}",
+                                slot.device_name
+                            );
+                            failed = true;
+                        }
+                    }
+                }
+                if failed {
+                    // The watchdog recreates the controller with the new URL.
+                    slot.close_webview();
+                }
+            }
+        }
+        state.reconcile()?;
+        Ok(navigated)
+    })
+    .ok_or_else(|| anyhow!("wallpaper state is already borrowed"))?
+}
+
+/// Rotation pauses while every slot is fullscreen, and while no wallpaper is
+/// configured (cleared desktop) so a timer cannot resurrect it.
+pub fn rotation_should_pause() -> bool {
+    with_state(|state| {
+        if !state.slots.iter().any(|slot| slot.entry_url.is_some()) {
+            return true;
+        }
+        state.slots.iter().all(|slot| slot.fullscreen)
+    })
+    .unwrap_or(true)
+}
+
 pub fn clear_monitor_mod(monitor_id: &str) -> Result<()> {
     with_state(|state| {
         if let Some(slot) = state
@@ -468,6 +525,11 @@ pub fn clear_all() {
             }
         }
     });
+}
+
+/// Current global wallpaper visibility (session only, not persisted).
+pub fn is_visible() -> bool {
+    with_state(|state| state.global_visible).unwrap_or(true)
 }
 
 pub fn set_visible(visible: bool) {
@@ -744,6 +806,7 @@ impl WallpaperState {
             .ok_or_else(|| anyhow!("no wallpaper entry URL"))?;
         let device_name = self.slots[index].device_name.clone();
         let wallpapers_dir = self.wallpapers_dir.clone();
+        let created_url = entry_url.clone();
         let message_device = device_name.clone();
         let loaded_device = device_name.clone();
         let failed_device = device_name.clone();
@@ -788,6 +851,18 @@ impl WallpaperState {
                             slot.webview = Some(webview);
                             slot.creating = false;
                             slot.recreate_after = None;
+                            // A rotation may have pointed the slot at another
+                            // mod while this controller was being created; the
+                            // in-flight navigation still targets the old URL.
+                            if let Some(current) = slot.entry_url.clone()
+                                && current != created_url
+                                && let Some(webview) = &slot.webview
+                                && let Err(err) = navigate(&webview.webview, &current)
+                            {
+                                warn!(
+                                    "could not follow a rotation that landed during controller creation: {err:?}"
+                                );
+                            }
                             true
                         } else {
                             false
@@ -1612,6 +1687,11 @@ unsafe extern "system" fn chrome_overlay_callback(hwnd: HWND, lparam: LPARAM) ->
     if !class_name.starts_with("Chrome_WidgetWin_") || !IsWindowVisible(hwnd).as_bool() {
         return true.into();
     }
+    // Chrome/Edge browser windows share this class; only our own WebView2
+    // hosts may be made click-through.
+    if !crate::is_our_webview_window(hwnd) {
+        return true.into();
+    }
 
     let mut rect = RECT::default();
     if GetWindowRect(hwnd, &mut rect).is_err() {
@@ -1664,11 +1744,16 @@ fn is_fullscreen(monitor_rect: RECT) -> bool {
         }
 
         let class_name = window_class_name(hwnd);
+        // Our own overlay hosts are part of the wallpaper and never count as a
+        // fullscreen app. A browser with the same Chrome class must fall
+        // through to the rectangle check below.
+        if class_name.starts_with("Chrome_WidgetWin_") && crate::is_our_webview_window(hwnd) {
+            return true.into();
+        }
         if matches!(
             class_name.as_str(),
             "OctosMainWindow" | "OctosWallpaperWindow" | "Shell_TrayWnd" | "Progman" | "WorkerW"
-        ) || class_name.starts_with("Chrome_WidgetWin_")
-            || class_name.starts_with("Chrome_RenderWidgetHostHWND")
+        ) || class_name.starts_with("Chrome_RenderWidgetHostHWND")
             || class_name.starts_with("WebView2")
             || class_name.starts_with("ShellHandwritingCanvas")
             || class_name.starts_with("XamlExplorerHost")
