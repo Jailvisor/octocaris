@@ -437,6 +437,25 @@ function ModDetail({
   )
 }
 
+function SelectAllIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M3.5 7.5l2 2 3.5-3.5" />
+      <path d="M3.5 17.5l2 2 3.5-3.5" />
+      <path d="M13.5 8h7M13.5 18h7" />
+    </svg>
+  )
+}
+
+function NextIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M5 5.5l9 6.5-9 6.5v-13z" />
+      <path d="M19 5v14" />
+    </svg>
+  )
+}
+
 function DragGripIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -1065,28 +1084,27 @@ function PlaylistPanel({
       </div>
 
       <div className="playlist-footer">
-        <p className="tiny playlist-pick-hint">{t('playlist.pickHint')}</p>
-        <div className="playlist-actions">
-          <button
-            type="button"
-            className="button ghost"
-            onClick={onSelectAll}
-            disabled={
-              runnable.length === 0 ||
-              runnable.every((card) => items.includes(card.folder_path))
-            }
-          >
-            {t('playlist.selectAll')}
-          </button>
-          <button
-            type="button"
-            className="button ghost"
-            onClick={onNext}
-            disabled={items.length < 2}
-          >
-            {t('playlist.next')}
-          </button>
-        </div>
+        <button
+          type="button"
+          className="button"
+          onClick={onSelectAll}
+          disabled={
+            runnable.length === 0 ||
+            runnable.every((card) => items.includes(card.folder_path))
+          }
+        >
+          <SelectAllIcon />
+          <span>{t('playlist.selectAll')}</span>
+        </button>
+        <button
+          type="button"
+          className="button"
+          onClick={onNext}
+          disabled={items.length < 2}
+        >
+          <NextIcon />
+          <span>{t('playlist.next')}</span>
+        </button>
       </div>
     </section>
   )

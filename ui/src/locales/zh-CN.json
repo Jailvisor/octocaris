@@ -124,7 +124,6 @@
       "missing": "有 {{count}} 个条目已缺失",
       "active": "{{count}} 张壁纸参与轮换"
     },
-    "pickHint": "勾选卡片左上角的方框加入或移出轮换；拖动卡片调整顺序（Alt+↑/↓ 也可）；Ctrl+A 全选，Ctrl+D 清空。",
     "addTo": "加入轮换",
     "removeFrom": "移出轮换",
     "selectAll": "全选"

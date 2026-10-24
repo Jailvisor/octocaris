@@ -124,7 +124,6 @@
       "missing": "{{count}} item(s) are missing",
       "active": "Rotating {{count}} wallpapers"
     },
-    "pickHint": "Tick a card's top-left checkbox to add or remove it; drag cards to reorder (Alt+Up/Down also works); Ctrl+A selects all, Ctrl+D clears.",
     "addTo": "Add to rotation",
     "removeFrom": "Remove from rotation",
     "selectAll": "Select all"
