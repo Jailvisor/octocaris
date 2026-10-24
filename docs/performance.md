@@ -65,3 +65,26 @@
 1. 限制同时动画的壁纸数量/分辨率，或为 mod 提供质量档位。
 2. 若 L2D 是主要使用场景，优先建议 mod 使用 2K 资源而不是 4K/8K；宿主无法替 mod 降资源。
 3. 如需进一步降低托盘常驻内存，评估关闭并重建主 WebView controller 的方案（恢复延迟 vs 内存）。
+
+## 2026-10-24 终测：图片/L2D、全屏、息屏
+
+环境：Windows 11，单屏 `DISPLAY2` 2880×1800 @200%，`maxFps = 30`，轮换关闭。
+方法：10 秒采样 `octos.exe` + 所有带 `--webview-exe-name=octos.exe` 的 `msedgewebview2.exe` 的 `TotalProcessorTime` 增量，按单核归一化；内存为这些进程 WorkingSet 之和。
+
+| 场景 | 单核 CPU | 内存 | 说明 |
+|---|---:|---:|---|
+| L2D 壁纸（3253308696，WE web 包）空闲 | **27.8%** | **1444 MB** | 7 个进程 |
+| L2D + 模拟全屏窗口 | **3.0%** | **1299 MB** | 壁纸 `SetIsVisible(false)`；日志 `fullscreen=true/false` 正常 |
+| L2D + 关闭显示器 | **19.4%** | **1338 MB** | 没有显式的息屏/锁屏暂停 |
+| 图片壁纸（缩略图先到、原图淡入）空闲 | **3.3%** | **1039 MB** | 静态壁纸，CPU 很低 |
+
+结论：
+
+- **图片壁纸正常**：3.3% / 1.0 GB，符合预期。
+- **L2D 正常**：30 FPS 下 27.8%，与之前 32–41% 的基线同一量级（资源包不同）。
+- **全屏游戏/视频正常**：壁纸被隐藏，CPU 掉到 3%，退出全屏自动恢复。
+- **息屏没有专门处理**：显示器关闭后 Chromium/DWM 会自然降频（27.8% → 19.4%），但仍有约 19% 的 CPU 占用。建议后续增加锁屏/息屏暂停：
+  - `WTSRegisterSessionNotification` + `WM_WTSSESSION_CHANGE`：锁屏时 `set_visible(false)`，解锁恢复；
+  - 或对壁纸 controller 调用 `TrySuspend`，同时降低内存；
+  - 该项不影响当前可用性，只是省电优化。
+- 内存隐藏后不释放（全屏 1.3 GB、息屏 1.34 GB），属于 WebView2 保持 controller 的预期行为；`TrySuspend` 可进一步降低。
