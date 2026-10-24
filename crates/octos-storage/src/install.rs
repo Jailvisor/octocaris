@@ -41,6 +41,10 @@ pub enum InstallError {
     AlreadyInstalled(PathBuf),
     #[error("not an Octos mod (missing octos.json or mod.json): {0}")]
     NotAMod(PathBuf),
+    #[error(
+        "Wallpaper Engine {kind} packages are not supported; only \"web\" wallpapers can be imported"
+    )]
+    UnsupportedWorkshop { kind: String },
     #[error("unsupported image type: {0}")]
     UnsupportedImage(String),
     #[error("image is too large: {size} bytes (limit {limit})")]
@@ -51,6 +55,7 @@ pub enum InstallError {
 
 pub fn install_zip(zip_path: &Path, wallpapers_root: &Path) -> Result<PathBuf, InstallError> {
     fs::create_dir_all(wallpapers_root)?;
+    cleanup_staging(wallpapers_root);
 
     let stem = zip_path
         .file_stem()
@@ -78,7 +83,10 @@ pub fn install_zip(zip_path: &Path, wallpapers_root: &Path) -> Result<PathBuf, I
     if result.is_err() {
         let _ = fs::remove_dir_all(&staging);
     }
-    result
+    result.map_err(|err| match err {
+        InstallError::NotAMod(_) => InstallError::NotAMod(zip_path.to_path_buf()),
+        other => other,
+    })
 }
 
 /// Copy an existing mod folder into the wallpapers directory.
@@ -96,7 +104,13 @@ pub fn install_folder(source: &Path, wallpapers_root: &Path) -> Result<PathBuf, 
         return Err(InstallError::AlreadyInstalled(source));
     }
     if !has_manifest(&source) {
-        return Err(InstallError::NotAMod(source));
+        match workshop_project(&source) {
+            WorkshopProject::Web => {}
+            WorkshopProject::Unsupported(kind) => {
+                return Err(InstallError::UnsupportedWorkshop { kind });
+            }
+            WorkshopProject::None => return Err(InstallError::NotAMod(source)),
+        }
     }
 
     let name = source
@@ -254,7 +268,7 @@ fn finalize_install(
     } else {
         staging.to_path_buf()
     };
-    if !has_manifest(&source) {
+    if !has_manifest(&source) && !convert_wallpaper_engine(&source)? {
         return Err(InstallError::NotAMod(source));
     }
 
@@ -267,6 +281,103 @@ fn finalize_install(
         let _ = fs::remove_dir_all(staging);
     }
     Ok(destination)
+}
+
+enum WorkshopProject {
+    None,
+    Web,
+    Unsupported(String),
+}
+
+fn workshop_project(folder: &Path) -> WorkshopProject {
+    let path = folder.join("project.json");
+    if !path.is_file() {
+        return WorkshopProject::None;
+    }
+    let Ok(text) = fs::read_to_string(&path) else {
+        return WorkshopProject::None;
+    };
+    let Ok(project) = serde_json::from_str::<serde_json::Value>(&text) else {
+        return WorkshopProject::None;
+    };
+    match project.get("type").and_then(|value| value.as_str()) {
+        Some("web") => WorkshopProject::Web,
+        Some(kind) => WorkshopProject::Unsupported(kind.to_string()),
+        None => WorkshopProject::None,
+    }
+}
+
+/// Wallpaper Engine "web" packages are plain HTML apps. Synthesize the
+/// `octos.json` the rest of the pipeline expects so they can be installed.
+fn convert_wallpaper_engine(folder: &Path) -> Result<bool, InstallError> {
+    match workshop_project(folder) {
+        WorkshopProject::None => Ok(false),
+        WorkshopProject::Unsupported(kind) => Err(InstallError::UnsupportedWorkshop { kind }),
+        WorkshopProject::Web => {
+            let text = fs::read_to_string(folder.join("project.json"))?;
+            let project: serde_json::Value = serde_json::from_str(&text)
+                .map_err(|_| InstallError::NotAMod(folder.to_path_buf()))?;
+            let object = project
+                .as_object()
+                .ok_or_else(|| InstallError::NotAMod(folder.to_path_buf()))?;
+            let entry = object
+                .get("file")
+                .and_then(|value| value.as_str())
+                .unwrap_or("index.html");
+            if !safe_relative(Path::new(entry)) || !folder.join(entry).is_file() {
+                return Err(InstallError::NotAMod(folder.to_path_buf()));
+            }
+            let title = object
+                .get("title")
+                .and_then(|value| value.as_str())
+                .filter(|title| !title.trim().is_empty())
+                .unwrap_or("Wallpaper Engine");
+            let description = object
+                .get("description")
+                .and_then(|value| value.as_str())
+                .unwrap_or("");
+            let preview = object
+                .get("preview")
+                .and_then(|value| value.as_str())
+                .filter(|preview| {
+                    safe_relative(Path::new(preview)) && folder.join(preview).is_file()
+                });
+
+            let mut config = serde_json::Map::new();
+            config.insert("name".into(), serde_json::json!(title));
+            config.insert("author".into(), serde_json::json!("Wallpaper Engine"));
+            config.insert("description".into(), serde_json::json!(description));
+            if let Some(preview) = preview {
+                config.insert("image".into(), serde_json::json!(preview));
+            }
+            config.insert("entry".into(), serde_json::json!(entry));
+            config.insert("version".into(), serde_json::json!("1.0.0"));
+            fs::write(
+                folder.join("octos.json"),
+                serde_json::to_vec_pretty(&serde_json::Value::Object(config))
+                    .map_err(io::Error::other)?,
+            )?;
+            Ok(true)
+        }
+    }
+}
+
+/// Remove staging directories left behind by an interrupted install.
+pub fn cleanup_staging(wallpapers_root: &Path) -> usize {
+    let Ok(entries) = fs::read_dir(wallpapers_root) else {
+        return 0;
+    };
+    let mut removed = 0;
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().to_string();
+        if (name.starts_with(".octos-install-") || name.starts_with(".octos-image-"))
+            && entry.path().is_dir()
+            && fs::remove_dir_all(entry.path()).is_ok()
+        {
+            removed += 1;
+        }
+    }
+    removed
 }
 
 fn has_manifest(folder: &Path) -> bool {
@@ -409,6 +520,89 @@ mod tests {
 
         let error = install_zip(&zip_path, &temp.path().join("wallpapers")).unwrap_err();
         assert!(matches!(error, InstallError::InvalidFolderName(_)));
+    }
+
+    #[test]
+    fn converts_wallpaper_engine_web_folders() {
+        let temp = tempdir().unwrap();
+        let source = temp.path().join("2961764492");
+        fs::create_dir_all(&source).unwrap();
+        fs::write(
+            source.join("project.json"),
+            r#"{"type":"web","file":"index.html","title":"Saori","description":"desc","preview":"preview.gif"}"#,
+        )
+        .unwrap();
+        fs::write(source.join("index.html"), "<!doctype html>").unwrap();
+        fs::write(source.join("preview.gif"), "GIF89a").unwrap();
+        let wallpapers = temp.path().join("wallpapers");
+
+        let installed = install_folder(&source, &wallpapers).unwrap();
+
+        let config: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(installed.join("octos.json")).unwrap())
+                .unwrap();
+        assert_eq!(config["name"], "Saori");
+        assert_eq!(config["entry"], "index.html");
+        assert_eq!(config["image"], "preview.gif");
+        assert_eq!(config["author"], "Wallpaper Engine");
+    }
+
+    #[test]
+    fn converts_wallpaper_engine_web_zips() {
+        let temp = tempdir().unwrap();
+        let zip_path = temp.path().join("2961764492.zip");
+        write_zip(
+            &zip_path,
+            &[
+                (
+                    "2961764492/project.json",
+                    r#"{"type":"web","file":"index.html","title":"Saori"}"#,
+                ),
+                ("2961764492/index.html", "<!doctype html>"),
+            ],
+        )
+        .unwrap();
+        let wallpapers = temp.path().join("wallpapers");
+
+        let installed = install_zip(&zip_path, &wallpapers).unwrap();
+
+        let config: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(installed.join("octos.json")).unwrap())
+                .unwrap();
+        assert_eq!(config["name"], "Saori");
+        assert_eq!(config["entry"], "index.html");
+    }
+
+    #[test]
+    fn rejects_wallpaper_engine_scene_packages() {
+        let temp = tempdir().unwrap();
+        let source = temp.path().join("scene-package");
+        fs::create_dir_all(&source).unwrap();
+        fs::write(
+            source.join("project.json"),
+            r#"{"type":"scene","file":"scene.pkg","title":"Scene"}"#,
+        )
+        .unwrap();
+        fs::write(source.join("scene.pkg"), "pkg").unwrap();
+
+        let error = install_folder(&source, &temp.path().join("wallpapers")).unwrap_err();
+        assert!(matches!(
+            error,
+            InstallError::UnsupportedWorkshop { kind } if kind == "scene"
+        ));
+    }
+
+    #[test]
+    fn cleanup_removes_stale_staging_directories() {
+        let temp = tempdir().unwrap();
+        fs::create_dir_all(temp.path().join(".octos-install-1-2")).unwrap();
+        fs::create_dir_all(temp.path().join(".octos-image-3-4")).unwrap();
+        fs::create_dir_all(temp.path().join("real-mod")).unwrap();
+
+        assert_eq!(cleanup_staging(temp.path()), 2);
+        assert!(!temp.path().join(".octos-install-1-2").exists());
+        assert!(!temp.path().join(".octos-image-3-4").exists());
+        assert!(temp.path().join("real-mod").is_dir());
     }
 
     #[test]

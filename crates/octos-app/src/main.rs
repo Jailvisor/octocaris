@@ -111,6 +111,10 @@ fn run(paths: Paths) -> Result<()> {
     // Lite mode is a per-session tray action now, not a persisted setting.
     let had_lite_mode = preferences.app_options.extra.remove("liteMode").is_some();
     let saved_window: Option<WindowPlacement> = preferences.window;
+    let removed_staging = octos_storage::cleanup_staging(&paths.wallpapers);
+    if removed_staging > 0 {
+        info!("removed {removed_staging} stale install staging director(ies)");
+    }
     info!(
         "preferences loaded: {} monitor selection(s)",
         preferences.selected.len()
