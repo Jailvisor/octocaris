@@ -34,6 +34,7 @@ image-my-photo-1a2b3c4d/
 ```
 
 - `octos.json` 的 `image` 指向原图，壁纸页面继续用原图；Library 卡片和轮换列表优先加载 `thumbnail.jpg`，没有时回退 `image`；
+- 生成的 `index.html` 先铺满 `thumbnail.jpg`，原图加载完成后用 220ms 淡入；已有图片 mod 的页面会在启动时自动升级（带 `octos-image-view` 标记后不再重写）；
 - `entry` 为生成的 `index.html`；
 - 自动带一个 `fit` 选项：`cover`（默认）/ `contain` / `fill`。
 - 图片页监听 `options-change`，修改 `fit` 后即时生效；三种模式分别对应 CSS `object-fit`。

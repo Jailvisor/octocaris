@@ -164,8 +164,47 @@ pub fn ensure_all(wallpapers: &Path) -> usize {
             Ok(false) => {}
             Err(err) => warn!("could not create a thumbnail for {}: {err}", path.display()),
         }
+        refresh_image_page(&path);
     }
     generated
+}
+
+/// Rewrite the generated `index.html` of an image mod once so it paints the
+/// thumbnail before the full image. Only touches our own generated pages.
+fn refresh_image_page(mod_dir: &Path) {
+    let generated = mod_dir
+        .file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name.starts_with("image-"));
+    if !generated {
+        return;
+    }
+    let Ok(manifest) = octos_core::manifest::ModManifest::load(mod_dir) else {
+        return;
+    };
+    let Some(image) = manifest.image.as_deref() else {
+        return;
+    };
+    let Some(image_name) = image.file_name().and_then(|name| name.to_str()) else {
+        return;
+    };
+    if !image_name.starts_with("image.") {
+        return;
+    }
+    let page = mod_dir.join("index.html");
+    if fs::read_to_string(&page)
+        .map(|html| html.contains("octos-image-view"))
+        .unwrap_or(false)
+    {
+        return;
+    }
+    match fs::write(&page, crate::image::index_html(image_name)) {
+        Ok(()) => info!("refreshed the image page for {}", mod_dir.display()),
+        Err(err) => warn!(
+            "could not refresh the image page for {}: {err}",
+            mod_dir.display()
+        ),
+    }
 }
 
 #[cfg(test)]

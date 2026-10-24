@@ -178,27 +178,56 @@ fn detect_format(header: &[u8]) -> Option<&'static str> {
     }
 }
 
-fn index_html(image_name: &str) -> String {
+pub(crate) fn index_html(image_name: &str) -> String {
     r#"<!doctype html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta name="octos-image-view" content="2">
   <title>Image wallpaper</title>
   <style>
     html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #000; }
-    #image { display: block; width: 100%; height: 100%; object-fit: cover; }
+    #placeholder {
+      position: fixed;
+      inset: 0;
+      background: #000 url('./thumbnail.jpg') center / cover no-repeat;
+    }
+    #image {
+      position: fixed;
+      inset: 0;
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      opacity: 0;
+      transition: opacity 220ms ease;
+    }
+    #image.loaded { opacity: 1; }
   </style>
 </head>
 <body>
+  <div id="placeholder"></div>
   <img id="image" src="./IMAGE_FILENAME" alt="">
   <script>
     (() => {
       const image = document.getElementById('image');
+      const placeholder = document.getElementById('placeholder');
+
+      const setFit = (fit) => {
+        if (fit !== 'cover' && fit !== 'contain' && fit !== 'fill') return;
+        image.style.objectFit = fit;
+        placeholder.style.backgroundSize = fit === 'fill' ? '100% 100%' : fit;
+      };
+
+      const reveal = () => image.classList.add('loaded');
+      if (image.complete && image.naturalWidth > 0) reveal();
+      image.addEventListener('load', () => {
+        reveal();
+        setTimeout(() => placeholder.remove(), 260);
+      }, { once: true });
+
       const apply = (options) => {
-        const fit = options && options.fit && options.fit.value;
-        if (fit === 'cover' || fit === 'contain' || fit === 'fill') {
-          image.style.objectFit = fit;
-        }
+        setFit(options && options.fit && options.fit.value);
       };
       const bridge = window.chrome && window.chrome.webview;
       if (!bridge) return;
@@ -262,6 +291,8 @@ mod tests {
         let html = fs::read_to_string(installed.join("index.html")).unwrap();
         assert!(html.contains("./image.png"));
         assert!(html.contains("options-change"));
+        assert!(html.contains("thumbnail.jpg"));
+        assert!(html.contains("octos-image-view"));
     }
 
     #[test]
