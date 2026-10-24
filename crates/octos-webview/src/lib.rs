@@ -27,6 +27,7 @@ use windows::Win32::Graphics::DirectComposition::{
     DCompositionCreateDevice, IDCompositionDevice, IDCompositionTarget, IDCompositionVisual,
 };
 use windows::Win32::Graphics::Dxgi::IDXGIDevice;
+use windows::Win32::UI::HiDpi::GetDpiForWindow;
 use windows::Win32::UI::WindowsAndMessaging::GetClientRect;
 use windows::core::{BOOL, IUnknown, Interface, PCWSTR, PWSTR, w};
 
@@ -463,6 +464,22 @@ impl CompositionDevice {
                         GetClientRect(hwnd, &mut client)?;
                         controller.SetBounds(client)?;
                         controller.SetIsVisible(true)?;
+
+                        // WebView2 defaults to a 1.0 rasterization scale. Without
+                        // this the page believes the display is 2880 CSS pixels at
+                        // DPR 1 on a 200% monitor, so L2D/HTML wallpapers look
+                        // softer than in Wallpaper Engine.
+                        let dpi = GetDpiForWindow(hwnd);
+                        let scale = if dpi >= 96 {
+                            f64::from(dpi) / 96.0
+                        } else {
+                            1.0
+                        };
+                        if let Ok(controller3) = controller.cast::<ICoreWebView2Controller3>() {
+                            let _ = controller3.SetShouldDetectMonitorScaleChanges(true);
+                            let _ = controller3.SetRasterizationScale(scale);
+                        }
+                        info!("wallpaper DPI {dpi} -> rasterization scale {scale}");
 
                         // Isolate local/session storage per monitor before the
                         // page runs, so wallpapers with their own settings panel
