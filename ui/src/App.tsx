@@ -371,12 +371,23 @@ function ModDetail({
     <div className="panel mod-detail">
       <div className="detail-heading">
         <h2>{card.name}</h2>
-        {inUse && (
-          <span className="pill success">
-            <span className="status-dot connected" />
-            {t('library.inUse')}
-          </span>
-        )}
+        <div className="detail-heading-actions">
+          {inUse && (
+            <span className="pill success">
+              <span className="status-dot connected" />
+              {t('library.inUse')}
+            </span>
+          )}
+          <button
+            type="button"
+            className="icon-action danger"
+            aria-label={t('library.removeHint')}
+            title={t('library.removeHint')}
+            onClick={() => setConfirmRemove(true)}
+          >
+            <TrashIcon />
+          </button>
+        </div>
       </div>
       {!card.entry_url && <p className="warn-text">{t('library.notRunnable')}</p>}
 
@@ -404,8 +415,8 @@ function ModDetail({
         </button>
       </div>
 
-      <div className="detail-actions">
-        {confirmRemove ? (
+      {confirmRemove && (
+        <div className="detail-actions">
           <span className="confirm-inline">
             <span className="tiny">{t('library.removeConfirm')}</span>
             <button className="button ghost danger-text" onClick={onRemove}>
@@ -415,12 +426,8 @@ function ModDetail({
               {t('library.cancel')}
             </button>
           </span>
-        ) : (
-          <button className="button ghost quiet-danger" onClick={() => setConfirmRemove(true)}>
-            {t('library.remove')}
-          </button>
-        )}
-      </div>
+        </div>
+      )}
       {playlistEnabled && <p className="tiny playlist-hint">{t('playlist.overrideHint')}</p>}
 
       <h3 className="section-title">{t('library.options')}</h3>
@@ -434,6 +441,27 @@ function ModDetail({
         </div>
       )}
     </div>
+  )
+}
+
+function TrashIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M4 7h16" />
+      <path d="M9 7V5h6v2" />
+      <path d="M6.5 7l1 13h9l1-13" />
+      <path d="M10 11v6M14 11v6" />
+    </svg>
+  )
+}
+
+function ClearAllIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M3.5 5.5l4 4M7.5 5.5l-4 4" />
+      <path d="M3.5 15.5l4 4M7.5 15.5l-4 4" />
+      <path d="M13.5 7h7M13.5 17h7" />
+    </svg>
   )
 }
 
@@ -963,6 +991,7 @@ function PlaylistPanel({
   onSetInterval,
   onSetRandom,
   onSelectAll,
+  onClearAll,
   onNext,
 }: {
   playlist: PlaylistSnapshot
@@ -971,6 +1000,7 @@ function PlaylistPanel({
   onSetInterval: (seconds: number) => void
   onSetRandom: (random: boolean) => void
   onSelectAll: () => void
+  onClearAll: () => void
   onNext: () => void
 }) {
   const { t } = useTranslation()
@@ -1069,17 +1099,30 @@ function PlaylistPanel({
         </div>
 
         <div className="playlist-control">
-          <span>{t('playlist.random.title')}</span>
-          <button
-            type="button"
-            className={playlist.random ? 'switch interactive active' : 'switch interactive'}
-            role="switch"
-            aria-checked={playlist.random}
-            aria-label={t('playlist.random.title')}
-            onClick={() => onSetRandom(!playlist.random)}
+          <span>{t('playlist.order.title')}</span>
+          <div
+            className="segmented"
+            role="group"
+            aria-label={t('playlist.order.title')}
+            title={t('playlist.order.hint')}
           >
-            <span />
-          </button>
+            <button
+              type="button"
+              className={playlist.random ? undefined : 'active'}
+              aria-pressed={!playlist.random}
+              onClick={() => onSetRandom(false)}
+            >
+              {t('playlist.order.library')}
+            </button>
+            <button
+              type="button"
+              className={playlist.random ? 'active' : undefined}
+              aria-pressed={playlist.random}
+              onClick={() => onSetRandom(true)}
+            >
+              {t('playlist.order.random')}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -1095,6 +1138,15 @@ function PlaylistPanel({
         >
           <SelectAllIcon />
           <span>{t('playlist.selectAll')}</span>
+        </button>
+        <button
+          type="button"
+          className="button"
+          onClick={onClearAll}
+          disabled={items.length === 0}
+        >
+          <ClearAllIcon />
+          <span>{t('playlist.clearAll')}</span>
         </button>
         <button
           type="button"
@@ -1628,6 +1680,7 @@ export default function App() {
                     onSetInterval={setPlaylistInterval}
                     onSetRandom={setPlaylistRandom}
                     onSelectAll={addAllWallpapers}
+                    onClearAll={clearPlaylist}
                     onNext={playlistNext}
                   />
                   {selectedCard ? (

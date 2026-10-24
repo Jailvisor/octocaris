@@ -28,7 +28,6 @@
     "runnable": "HTML entry",
     "notRunnable": "No HTML entry",
     "testMod": "Test mod",
-    "remove": "Remove",
     "removeConfirm": "Remove this wallpaper? Its mod folder will be deleted.",
     "installing": "Installing…",
     "importFolder": "Import folder",
@@ -56,7 +55,8 @@
     "showWallpaper": "Show wallpapers",
     "hideWallpaper": "Hide wallpapers",
     "refreshed": "Wallpaper library refreshed.",
-    "detailEmpty": "Select a wallpaper below to see its details."
+    "detailEmpty": "Select a wallpaper below to see its details.",
+    "removeHint": "Remove wallpaper (deletes the mod folder)"
   },
   "settings": {
     "title": "Settings",
@@ -111,9 +111,6 @@
       "unitSeconds": "seconds",
       "unitMinutes": "minutes"
     },
-    "random": {
-      "title": "Shuffle"
-    },
     "done": "Done",
     "next": "Next now",
     "badge": "Rotation",
@@ -126,6 +123,13 @@
     },
     "addTo": "Add to rotation",
     "removeFrom": "Remove from rotation",
-    "selectAll": "Select all"
+    "selectAll": "Select all",
+    "order": {
+      "title": "Order",
+      "library": "Library order",
+      "random": "Random",
+      "hint": "Library order follows the grid; Random picks a different wallpaper each time"
+    },
+    "clearAll": "Clear all"
   }
 }

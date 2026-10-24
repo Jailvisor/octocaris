@@ -434,15 +434,6 @@ h1 {
   color: var(--text);
 }
 
-.button.quiet-danger {
-  color: var(--muted);
-}
-
-.button.quiet-danger:hover:not(:disabled) {
-  background: rgba(229, 72, 77, 0.08);
-  color: var(--accent);
-}
-
 .button.danger-text {
   color: var(--accent);
 }
@@ -910,6 +901,47 @@ h1 {
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
+}
+
+.detail-heading-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.icon-action {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--faint);
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+
+.icon-action svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.icon-action:hover {
+  border-color: var(--line-strong);
+  color: var(--text);
+}
+
+.icon-action.danger:hover {
+  border-color: rgba(229, 72, 77, 0.45);
+  background: rgba(229, 72, 77, 0.08);
+  color: var(--accent);
 }
 
 .mod-detail h2 {
@@ -1707,6 +1739,35 @@ h1 {
   font-size: 12px;
 }
 
+.segmented {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.segmented button {
+  border: 0;
+  border-radius: 4px;
+  padding: 4px 9px;
+  background: transparent;
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 12px;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.segmented button:hover {
+  color: var(--text);
+}
+
+.segmented button.active {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text);
+}
+
 .playlist-footer {
   display: flex;
   flex-wrap: wrap;
@@ -1741,6 +1802,14 @@ h1 {
 @media (prefers-color-scheme: light) {
   .interval-inputs input[type='number'] {
     background-color: rgba(0, 0, 0, 0.03);
+  }
+
+  .segmented {
+    background: rgba(0, 0, 0, 0.03);
+  }
+
+  .segmented button.active {
+    background: rgba(0, 0, 0, 0.08);
   }
 
 }

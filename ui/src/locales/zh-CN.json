@@ -28,7 +28,6 @@
     "runnable": "HTML 入口",
     "notRunnable": "没有 HTML 入口",
     "testMod": "测试 mod",
-    "remove": "卸载",
     "removeConfirm": "确定卸载？mod 文件夹将被删除。",
     "installing": "安装中…",
     "importFolder": "导入文件夹",
@@ -56,7 +55,8 @@
     "showWallpaper": "显示壁纸",
     "hideWallpaper": "隐藏壁纸",
     "refreshed": "壁纸库已刷新。",
-    "detailEmpty": "在下方壁纸库里选择一张壁纸查看详情。"
+    "detailEmpty": "在下方壁纸库里选择一张壁纸查看详情。",
+    "removeHint": "卸载壁纸（删除 mod 文件夹）"
   },
   "settings": {
     "title": "设置",
@@ -111,9 +111,6 @@
       "unitSeconds": "秒",
       "unitMinutes": "分钟"
     },
-    "random": {
-      "title": "随机顺序"
-    },
     "done": "完成",
     "next": "下一张",
     "badge": "轮换",
@@ -126,6 +123,13 @@
     },
     "addTo": "加入轮换",
     "removeFrom": "移出轮换",
-    "selectAll": "全选"
+    "selectAll": "全选",
+    "order": {
+      "title": "播放顺序",
+      "library": "壁纸库顺序",
+      "random": "随机",
+      "hint": "壁纸库顺序：按网格顺序轮换；随机：每次随机挑选，不连续重复"
+    },
+    "clearAll": "全取消"
   }
 }
