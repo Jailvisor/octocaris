@@ -56,7 +56,19 @@
     "hideWallpaper": "Hide wallpapers",
     "refreshed": "Wallpaper library refreshed.",
     "detailEmpty": "Select a wallpaper below to see its details.",
-    "removeHint": "Remove wallpaper (deletes the mod folder)"
+    "removeHint": "Remove wallpaper (deletes the mod folder)",
+    "page": {
+      "prev": "Previous",
+      "next": "Next",
+      "status": "Page {{current}} of {{total}}"
+    },
+    "view": {
+      "label": "View",
+      "grid": "Grid",
+      "sort": "Sort"
+    },
+    "sortHint": "Drag rows to reorder, Alt+↑/↓ to nudge, Enter to open details",
+    "sortTitle": "Sort view"
   },
   "settings": {
     "title": "Settings",
@@ -94,6 +106,10 @@
       "title": "Wallpaper frame rate",
       "desc": "Cap animation frame rate to save CPU and GPU. Applies immediately.",
       "unlimited": "Unlimited"
+    },
+    "muteWallpapers": {
+      "title": "Mute wallpapers",
+      "desc": "Silence audio from every wallpaper page. Applies immediately."
     }
   },
   "language": {

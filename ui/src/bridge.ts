@@ -30,6 +30,7 @@ export type SettingsSnapshot = {
   pauseFullscreen: boolean
   maxFps: number
   memorySaver: boolean
+  muteWallpapers: boolean
 }
 
 export type PlaylistSnapshot = {

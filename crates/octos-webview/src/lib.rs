@@ -411,6 +411,7 @@ impl CompositionDevice {
         entry_url: String,
         monitor_id: String,
         fps_cap: u32,
+        muted: bool,
         mut on_message: impl FnMut(&ICoreWebView2, &str) + 'static,
         mut on_loaded: impl FnMut(&ICoreWebView2) + 'static,
         mut on_process_failed: impl FnMut(&ICoreWebView2, COREWEBVIEW2_PROCESS_FAILED_KIND) + 'static,
@@ -465,15 +466,15 @@ impl CompositionDevice {
                         controller.SetBounds(client)?;
                         controller.SetIsVisible(true)?;
 
-                        // Read-only diagnostic: forcing RasterizationScale on a
-                        // composition controller makes the wallpaper render black,
-                        // so leave WebView2's default in place.
+                        // Give wallpapers a CSS viewport equal to the physical
+                        // pixel count (Wallpaper Engine does the same). Most web
+                        // wallpapers size their canvas from innerWidth/innerHeight
+                        // and ignore devicePixelRatio, so at 200% scaling they
+                        // would otherwise render at half resolution and look soft.
                         let dpi = GetDpiForWindow(hwnd);
-                        if let Ok(controller3) = controller.cast::<ICoreWebView2Controller3>() {
-                            let mut current = 0.0;
-                            let _ = controller3.RasterizationScale(&mut current);
-                            info!("wallpaper DPI {dpi}, rasterization scale {current}");
-                        }
+                        let zoom = if dpi > 96 { 96.0 / f64::from(dpi) } else { 1.0 };
+                        let _ = controller.SetZoomFactor(zoom);
+                        info!("wallpaper DPI {dpi} -> page zoom {zoom}");
 
                         // Isolate local/session storage per monitor before the
                         // page runs, so wallpapers with their own settings panel
@@ -519,6 +520,15 @@ impl CompositionDevice {
                             PCWSTR::from_raw(frame_wide.as_ptr()),
                             &frame_handler,
                         )?;
+                        // Mute before navigating so a wallpaper that autoplays
+                        // audio never gets a chance to make noise.
+                        if muted && let Ok(muted_webview) = webview.cast::<ICoreWebView2_8>() {
+                            let _ = muted_webview.SetIsMuted(true);
+                            let mut value = BOOL::from(false);
+                            let applied =
+                                muted_webview.IsMuted(&mut value).is_ok() && value.as_bool();
+                            debug!("wallpaper audio muted at creation: {applied}");
+                        }
                         webview.Navigate(PCWSTR::from_raw(url_wide.as_ptr()))?;
 
                         let message_handler = WebMessageReceivedEventHandler::create(Box::new(

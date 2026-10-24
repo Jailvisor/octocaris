@@ -112,13 +112,15 @@
 - **修复**：用 `CreateToolhelp32Snapshot` 沿父进程链判断窗口是否属于 `octos.exe` 的 WebView2 进程（`octos-win::is_our_webview_window`）。只有自己的覆盖层会被改成点击穿透；其它 Chrome/Edge 窗口继续走正常全屏检测，全屏时壁纸按规则隐藏。
 - **证据**：用一个独立进程创建类名为 `Chrome_WidgetWin_1`、矩形等于 2880×1800 的测试窗口，5 秒内 ex-style 保持 `0x100`（未被修改），同时日志出现 `monitor \\.\DISPLAY2 fullscreen=true/false`；自己的 `msedgewebview2` 覆盖层仍有 `made WebView2 overlay ... click-through` 日志。测试脚本：`E:\file\octos\test-foreign-chrome-window.ps1`。
 
-### 4.6 壁纸 WebView 的光栅化比例（DPI，实验后回退）
+### 4.6 壁纸 WebView 的清晰度（DPI）
 
-- **现象**：Composition controller 的 `RasterizationScale` 默认是 **1.0**（日志 `wallpaper DPI 192, rasterization scale 1`）。在 200% 显示器上页面会按 2880 CSS 像素 / DPR 1 渲染，L2D/HTML 壁纸可能比 Wallpaper Engine 软。
-- **尝试**：对 `ICoreWebView2Controller3` 设 `ShouldDetectMonitorScaleChanges(true)` + `SetRasterizationScale(2.0)`。
-- **结果**：合成壁纸全部变黑（不同壁纸都黑屏），Desktop 层没有画面。
-- **处理**：已回退，保留 WebView2 默认值；目前只记录 DPI 和实际 rasterization scale 日志，不修改。
-- **后续候选**：给壁纸单独创建带 `--force-device-scale-factor=2` 的 WebView2 environment，或在创建 composition target 之前设置 scale；都需要先在隔离环境验证不会再次黑屏。
+- **现象**：在 200% 显示器上，同一张 L2D 壁纸比 Wallpaper Engine 软；上游 Octos 也有同样问题。
+- **实测（zoom 1 基线）**：`innerWidth=1440, innerHeight=900, devicePixelRatio=2`（物理 2880×1800）。宿主本身已经是原生分辨率，画面糊的原因是壁纸页面自己建画布时只用 `innerWidth/innerHeight`、不乘 `devicePixelRatio`（PIXI `new Application({width, height})`，未设 `resolution`），画布只有 1440×900，再被合成器放大到 2880×1800。
+- **尝试 1（失败）**：对 `ICoreWebView2Controller3` 设 `ShouldDetectMonitorScaleChanges(true)` + `SetRasterizationScale(2.0)` → 合成壁纸全部变黑，已回退（`c81863f`、`48c18f6`）。
+- **尝试 2（放弃）**：`SetZoomFactor(2)` → `dpr=4, innerWidth=720`，属于超采样且把 CSS 布局压缩了一半，视觉上更“放大”，不是想要的。
+- **最终方案**：`SetZoomFactor(96 / dpi)`（192 DPI 时为 **0.5**），让壁纸页的 CSS 视口等于物理像素：`innerWidth=2880, innerHeight=1800, devicePixelRatio=1`。页面按 2880×1800 建画布，1:1 上屏；与 Wallpaper Engine 的渲染方式一致。
+- **验证**：日志 `wallpaper DPI 192 -> page zoom 0.5`；页面 `hello` 上报 `{"w":2880,"h":1800,"dpr":1}`；点击物理 `(400,400)` 时页面收到 `clientX=400, clientY=400`，`SendMouseInput` 映射无偏移。Momoi（30 FPS）CPU 26.9%（改前 27.8%），内存 1563 MB（改前 1444 MB，多出的是更大的画布纹理）。
+- **代价/限制**：壁纸页 1 CSS px = 1 物理 px，固定像素布局的 HTML 面板会比以前小一半（WE 同样如此）；运行中修改 DPI/缩放要等 controller 重建后才生效，`WM_DPICHANGED` 的处理后续可补。
 
 ### 4.7 `GetParent` 诊断误用
 

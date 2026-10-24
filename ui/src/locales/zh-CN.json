@@ -56,7 +56,19 @@
     "hideWallpaper": "隐藏壁纸",
     "refreshed": "壁纸库已刷新。",
     "detailEmpty": "在下方壁纸库里选择一张壁纸查看详情。",
-    "removeHint": "卸载壁纸（删除 mod 文件夹）"
+    "removeHint": "卸载壁纸（删除 mod 文件夹）",
+    "page": {
+      "prev": "上一页",
+      "next": "下一页",
+      "status": "第 {{current}} / {{total}} 页"
+    },
+    "view": {
+      "label": "视图",
+      "grid": "网格",
+      "sort": "排序"
+    },
+    "sortHint": "拖动行调整顺序，Alt+↑/↓ 微调，Enter 查看详情",
+    "sortTitle": "排序视图"
   },
   "settings": {
     "title": "设置",
@@ -94,6 +106,10 @@
       "title": "壁纸帧率",
       "desc": "限制壁纸动画帧率以节省 CPU/GPU，立即生效。",
       "unlimited": "不限制"
+    },
+    "muteWallpapers": {
+      "title": "静音壁纸",
+      "desc": "关闭所有壁纸页面的声音；立即生效。"
     }
   },
   "language": {

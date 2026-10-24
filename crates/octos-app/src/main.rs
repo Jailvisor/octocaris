@@ -191,6 +191,15 @@ fn run(paths: Paths) -> Result<()> {
         }
         save_preferences(&lite_paths);
     });
+    let mute_paths = paths.clone();
+    octos_win::set_mute_handler(move |enabled| {
+        if let Err(err) = apply_setting(&mute_paths, "muteWallpapers", &serde_json::json!(enabled))
+        {
+            warn!("could not toggle wallpaper mute: {err:?}");
+            return;
+        }
+        push_settings();
+    });
     if let Some(command) = startup_command {
         dispatch_cli(command, &paths);
     }
@@ -795,6 +804,9 @@ fn run(paths: Paths) -> Result<()> {
                         startup_preferences.app_options.pause_fullscreen,
                     );
                     octos_win::wallpaper::set_fps_cap(startup_preferences.app_options.max_fps);
+                    octos_win::wallpaper::set_muted(
+                        startup_preferences.app_options.mute_wallpapers,
+                    );
                     // Lite mode implies MemorySaver; honour a persisted opt-out otherwise.
                     octos_win::set_memory_saver(startup_preferences.app_options.memory_saver);
                     apply_startup_preferences(
@@ -914,6 +926,7 @@ fn settings_snapshot() -> serde_json::Value {
         "pauseFullscreen": options.map(|options| options.pause_fullscreen).unwrap_or(true),
         "maxFps": options.map(|options| options.max_fps).unwrap_or(30),
         "memorySaver": options.map(|options| options.memory_saver).unwrap_or(true),
+        "muteWallpapers": options.map(|options| options.mute_wallpapers).unwrap_or(false),
     })
 }
 
@@ -961,6 +974,11 @@ fn apply_setting(paths: &Paths, key: &str, value: &serde_json::Value) -> Result<
                 let enabled = boolean(key)?;
                 preferences.app_options.memory_saver = enabled;
                 octos_win::set_memory_saver(enabled);
+            }
+            "muteWallpapers" => {
+                let enabled = boolean(key)?;
+                preferences.app_options.mute_wallpapers = enabled;
+                octos_win::wallpaper::set_muted(enabled);
             }
             other => return Err(anyhow!("unknown setting: {other}")),
         }
@@ -1088,6 +1106,15 @@ fn backfill_thumbnails(paths: &Paths) {
     if let Err(err) = spawned {
         THUMBNAIL_BACKFILL_RUNNING.store(false, Ordering::SeqCst);
         warn!("could not start the thumbnail backfill: {err}");
+    }
+}
+
+fn push_settings() {
+    if let Ok(payload) = serde_json::to_string(&serde_json::json!({
+        "type": "settings",
+        "data": settings_snapshot(),
+    })) {
+        octos_win::post_to_main_webview(&payload);
     }
 }
 

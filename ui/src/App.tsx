@@ -636,6 +636,8 @@ function ModCardTile({
   )
 }
 
+const LIBRARY_PAGE_SIZE = 12
+
 function ModGrid({
   mods,
   selectedPath,
@@ -657,6 +659,22 @@ function ModGrid({
   const [dragIndex, setDragIndex] = useState<number | null>(null)
   const [overIndex, setOverIndex] = useState<number | null>(null)
   const [dropAfter, setDropAfter] = useState(false)
+  const [page, setPage] = useState(0)
+  const previousCount = useRef(mods.length)
+  const pageCount = Math.max(1, Math.ceil(mods.length / LIBRARY_PAGE_SIZE))
+  const safePage = Math.min(page, pageCount - 1)
+  const pageStart = safePage * LIBRARY_PAGE_SIZE
+  const visibleMods = mods.slice(pageStart, pageStart + LIBRARY_PAGE_SIZE)
+
+  useEffect(() => {
+    if (mods.length > previousCount.current) {
+      // Imports land at the end of the library; show them right away.
+      setPage(Math.max(0, Math.ceil(mods.length / LIBRARY_PAGE_SIZE) - 1))
+    } else if (page > pageCount - 1) {
+      setPage(pageCount - 1)
+    }
+    previousCount.current = mods.length
+  }, [mods.length, page, pageCount])
 
   function resetDrag() {
     dragIndexRef.current = null
@@ -698,9 +716,15 @@ function ModGrid({
       if (delta === 0) {
         return
       }
+      // Reordering stays inside the visible page; crossing pages would move a
+      // card the user cannot see.
+      if ((delta < 0 && current === 0) || (delta > 0 && current === cards.length - 1)) {
+        return
+      }
       event.preventDefault()
-      const path = mods[current]?.folder_path
-      onReorder(current, delta < 0 ? current - 1 : current + 2)
+      const path = visibleMods[current]?.folder_path
+      const global = pageStart + current
+      onReorder(global, delta < 0 ? global - 1 : global + 2)
       requestAnimationFrame(() => {
         const moved = Array.from(
           gridRef.current?.querySelectorAll<HTMLButtonElement>('[data-mod-card]') ?? [],
@@ -730,61 +754,260 @@ function ModGrid({
   }
 
   return (
-    <div
-      ref={gridRef}
-      className={dragIndex === null ? 'mod-grid' : 'mod-grid is-dragging'}
-      role="listbox"
-      aria-label={t('library.title')}
-      title={t('library.keyboardHint')}
-      onKeyDown={handleKeyDown}
-      onDragOver={(event) => {
-        if (!isCardDrag(event.dataTransfer)) {
-          return
-        }
-        event.preventDefault()
-        event.dataTransfer.dropEffect = 'move'
-        setOverIndex(null)
-      }}
-      onDrop={(event) => {
-        if (!isCardDrag(event.dataTransfer)) {
-          return
-        }
-        event.preventDefault()
-        const from = dragIndexRef.current
-        if (from !== null) {
-          onReorder(from, mods.length)
-        }
-        resetDrag()
-      }}
-    >
-      {mods.map((card, index) => (
-        <ModCardTile
-          key={card.folder_path}
-          card={card}
-          index={index}
-          selected={card.folder_path === selectedPath}
-          tabbable={
-            card.folder_path === selectedPath || (!selectedPath && index === 0)
+    <>
+      <div
+        ref={gridRef}
+        className={dragIndex === null ? 'mod-grid' : 'mod-grid is-dragging'}
+        role="listbox"
+        aria-label={t('library.title')}
+        title={t('library.keyboardHint')}
+        onKeyDown={handleKeyDown}
+        onDragOver={(event) => {
+          if (!isCardDrag(event.dataTransfer)) {
+            return
           }
-          inPlaylist={playlistPaths.includes(card.folder_path)}
-          dragging={dragIndex === index}
-          dropBefore={
-            dragIndex !== null && overIndex === index && !dropAfter && dragIndex !== index
+          event.preventDefault()
+          event.dataTransfer.dropEffect = 'move'
+          setOverIndex(null)
+        }}
+        onDrop={(event) => {
+          if (!isCardDrag(event.dataTransfer)) {
+            return
           }
-          dropAfter={
-            dragIndex !== null && overIndex === index && dropAfter && dragIndex !== index
+          event.preventDefault()
+          const from = dragIndexRef.current
+          if (from !== null) {
+            onReorder(from, pageStart + visibleMods.length)
           }
-          onSelect={onSelect}
-          onToggle={onToggle}
-          onDragStart={handleDragStart}
-          onDragOver={(target, after) => {
-            setOverIndex(target)
-            setDropAfter(after)
-          }}
-          onDrop={handleDrop}
-          onDragEnd={resetDrag}
-        />
-      ))}
+          resetDrag()
+        }}
+      >
+        {visibleMods.map((card, index) => (
+          <ModCardTile
+            key={card.folder_path}
+            card={card}
+            index={pageStart + index}
+            selected={card.folder_path === selectedPath}
+            tabbable={
+              card.folder_path === selectedPath || (!selectedPath && index === 0)
+            }
+            inPlaylist={playlistPaths.includes(card.folder_path)}
+            dragging={dragIndex === pageStart + index}
+            dropBefore={
+              dragIndex !== null &&
+              overIndex === pageStart + index &&
+              !dropAfter &&
+              dragIndex !== pageStart + index
+            }
+            dropAfter={
+              dragIndex !== null &&
+              overIndex === pageStart + index &&
+              dropAfter &&
+              dragIndex !== pageStart + index
+            }
+            onSelect={onSelect}
+            onToggle={onToggle}
+            onDragStart={handleDragStart}
+            onDragOver={(target, after) => {
+              setOverIndex(target)
+              setDropAfter(after)
+            }}
+            onDrop={handleDrop}
+            onDragEnd={resetDrag}
+          />
+        ))}
+      </div>
+      {pageCount > 1 && (
+        <div className="library-pager">
+          <button
+            type="button"
+            className="button ghost"
+            disabled={safePage === 0}
+            onClick={() => setPage(safePage - 1)}
+          >
+            {t('library.page.prev')}
+          </button>
+          <span className="pager-status">
+            {t('library.page.status', { current: safePage + 1, total: pageCount })}
+          </span>
+          <button
+            type="button"
+            className="button ghost"
+            disabled={safePage >= pageCount - 1}
+            onClick={() => setPage(safePage + 1)}
+          >
+            {t('library.page.next')}
+          </button>
+        </div>
+      )}
+    </>
+  )
+}
+
+function SortList({
+  mods,
+  selectedPath,
+  onSelect,
+  onReorder,
+}: {
+  mods: ModCard[]
+  selectedPath: string | null
+  onSelect: (path: string) => void
+  onReorder: (from: number, insertAt: number) => void
+}) {
+  const { t } = useTranslation()
+  const listRef = useRef<HTMLDivElement>(null)
+  const dragIndexRef = useRef<number | null>(null)
+  const [dragIndex, setDragIndex] = useState<number | null>(null)
+  const [overIndex, setOverIndex] = useState<number | null>(null)
+  const [dropAfter, setDropAfter] = useState(false)
+
+  function resetDrag() {
+    dragIndexRef.current = null
+    setDragIndex(null)
+    setOverIndex(null)
+  }
+
+  function handleKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
+    const list = listRef.current
+    if (!list) {
+      return
+    }
+    const rows = Array.from(list.querySelectorAll<HTMLElement>('[data-sort-row]'))
+    const active = (document.activeElement as HTMLElement | null)?.closest<HTMLElement>(
+      '[data-sort-row]',
+    )
+    const current = active ? rows.indexOf(active) : -1
+    if (current < 0) {
+      return
+    }
+
+    if (event.altKey) {
+      const delta = event.key === 'ArrowUp' ? -1 : event.key === 'ArrowDown' ? 1 : 0
+      if (delta === 0) {
+        return
+      }
+      event.preventDefault()
+      const path = mods[current]?.folder_path
+      onReorder(current, delta < 0 ? current - 1 : current + 2)
+      requestAnimationFrame(() => {
+        const moved = Array.from(
+          listRef.current?.querySelectorAll<HTMLElement>('[data-sort-row]') ?? [],
+        ).find((node) => node.dataset.path === path)
+        moved?.focus()
+      })
+      return
+    }
+
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault()
+      const path = mods[current]?.folder_path
+      if (path) {
+        onSelect(path)
+      }
+      return
+    }
+
+    let next = current
+    if (event.key === 'ArrowUp') next = Math.max(0, current - 1)
+    else if (event.key === 'ArrowDown') next = Math.min(rows.length - 1, current + 1)
+    else if (event.key === 'Home') next = 0
+    else if (event.key === 'End') next = rows.length - 1
+    else return
+    event.preventDefault()
+    rows[next]?.focus()
+  }
+
+  return (
+    <div className="sort-view">
+      <p className="tiny sort-hint">{t('library.sortHint')}</p>
+      <div
+        ref={listRef}
+        className="sort-list"
+        role="listbox"
+        aria-label={t('library.sortTitle')}
+        onKeyDown={handleKeyDown}
+        onDragOver={(event) => {
+          if (!isCardDrag(event.dataTransfer)) {
+            return
+          }
+          event.preventDefault()
+          event.dataTransfer.dropEffect = 'move'
+          setOverIndex(null)
+        }}
+        onDrop={(event) => {
+          if (!isCardDrag(event.dataTransfer)) {
+            return
+          }
+          event.preventDefault()
+          const from = dragIndexRef.current
+          if (from !== null) {
+            onReorder(from, mods.length)
+          }
+          resetDrag()
+        }}
+      >
+        {mods.map((card, index) => (
+          <div
+            key={card.folder_path}
+            data-sort-row
+            data-path={card.folder_path}
+            role="option"
+            aria-selected={card.folder_path === selectedPath}
+            tabIndex={card.folder_path === selectedPath || (!selectedPath && index === 0) ? 0 : -1}
+            className={[
+              'sort-row',
+              card.folder_path === selectedPath ? 'selected' : '',
+              dragIndex === index ? 'dragging' : '',
+              dragIndex !== null && overIndex === index && !dropAfter && dragIndex !== index
+                ? 'drop-before'
+                : '',
+              dragIndex !== null && overIndex === index && dropAfter && dragIndex !== index
+                ? 'drop-after'
+                : '',
+            ]
+              .filter(Boolean)
+              .join(' ')}
+            draggable
+            onClick={() => onSelect(card.folder_path)}
+            onDragStart={(event) => {
+              dragIndexRef.current = index
+              event.dataTransfer.setData(CARD_DRAG_MIME, card.folder_path)
+              event.dataTransfer.effectAllowed = 'move'
+              requestAnimationFrame(() => setDragIndex(index))
+            }}
+            onDragOver={(event) => {
+              if (!isCardDrag(event.dataTransfer)) {
+                return
+              }
+              event.preventDefault()
+              event.dataTransfer.dropEffect = 'move'
+              const rect = event.currentTarget.getBoundingClientRect()
+              setOverIndex(index)
+              setDropAfter(event.clientY > rect.top + rect.height / 2)
+            }}
+            onDrop={(event) => {
+              if (!isCardDrag(event.dataTransfer)) {
+                return
+              }
+              event.preventDefault()
+              const from = dragIndexRef.current
+              if (from !== null) {
+                const rect = event.currentTarget.getBoundingClientRect()
+                onReorder(from, index + (event.clientY > rect.top + rect.height / 2 ? 1 : 0))
+              }
+              resetDrag()
+            }}
+            onDragEnd={resetDrag}
+          >
+            <span className="sort-grip" aria-hidden="true">
+              ⠿
+            </span>
+            <span className="sort-index">{index + 1}</span>
+            <span className="sort-name">{card.name}</span>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
@@ -919,6 +1142,19 @@ function SettingsView({
             checked={settings.pauseFullscreen}
             label={t('settings.pauseFullscreen.title')}
             onChange={(value) => onSetSetting('pauseFullscreen', value)}
+          />
+        </div>
+      </div>
+      <div className="setting-row">
+        <div>
+          <h3>{t('settings.muteWallpapers.title')}</h3>
+          <p>{t('settings.muteWallpapers.desc')}</p>
+        </div>
+        <div className="setting-tail">
+          <SettingSwitch
+            checked={settings.muteWallpapers}
+            label={t('settings.muteWallpapers.title')}
+            onChange={(value) => onSetSetting('muteWallpapers', value)}
           />
         </div>
       </div>
@@ -1174,8 +1410,10 @@ export default function App() {
     pauseFullscreen: true,
     maxFps: 30,
     memorySaver: true,
+    muteWallpapers: false,
   })
   const [library, setLibrary] = useState<LibrarySnapshot | null>(null)
+  const [libraryView, setLibraryView] = useState<'grid' | 'sort'>('grid')
   const [selectedModPath, setSelectedModPath] = useState<string | null>(null)
   const [selectedMonitor, setSelectedMonitor] = useState('')
   const [installing, setInstalling] = useState<'mod' | 'folder' | 'image' | null>(null)
@@ -1223,7 +1461,7 @@ export default function App() {
   useEffect(() => {
     function onDragStart(event: DragEvent) {
       const target = event.target
-      if (target instanceof Element && target.closest('.mod-card-wrap')) {
+      if (target instanceof Element && target.closest('.mod-card-wrap, .sort-row')) {
         return
       }
       event.preventDefault()
@@ -1600,6 +1838,24 @@ export default function App() {
           </div>
           {tab === 'library' && (
           <div className="header-actions">
+            <div className="segmented view-switch" role="group" aria-label={t('library.view.label')}>
+              <button
+                type="button"
+                className={libraryView === 'grid' ? 'active' : ''}
+                aria-pressed={libraryView === 'grid'}
+                onClick={() => setLibraryView('grid')}
+              >
+                {t('library.view.grid')}
+              </button>
+              <button
+                type="button"
+                className={libraryView === 'sort' ? 'active' : ''}
+                aria-pressed={libraryView === 'sort'}
+                onClick={() => setLibraryView('sort')}
+              >
+                {t('library.view.sort')}
+              </button>
+            </div>
             <button
               className="button"
               onClick={installImage}
@@ -1705,14 +1961,23 @@ export default function App() {
                     </div>
                   )}
                 </div>
-                <ModGrid
-                  mods={library.mods}
-                  selectedPath={selectedModPath}
-                  playlistPaths={playlist.items}
-                  onSelect={setSelectedModPath}
-                  onToggle={togglePlaylistItem}
-                  onReorder={reorderLibrary}
-                />
+                {libraryView === 'sort' ? (
+                  <SortList
+                    mods={library.mods}
+                    selectedPath={selectedModPath}
+                    onSelect={setSelectedModPath}
+                    onReorder={reorderLibrary}
+                  />
+                ) : (
+                  <ModGrid
+                    mods={library.mods}
+                    selectedPath={selectedModPath}
+                    playlistPaths={playlist.items}
+                    onSelect={setSelectedModPath}
+                    onToggle={togglePlaylistItem}
+                    onReorder={reorderLibrary}
+                  />
+                )}
                 {library.errors.length > 0 && (
                   <p className="warn-text">{library.errors.join(' · ')}</p>
                 )}

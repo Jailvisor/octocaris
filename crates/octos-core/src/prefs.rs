@@ -46,6 +46,9 @@ pub struct AppOptions {
     /// Suspend the main UI WebView while the window is hidden in the tray.
     #[serde(default = "default_true")]
     pub memory_saver: bool,
+    /// Mute audio from every wallpaper page.
+    #[serde(default)]
+    pub mute_wallpapers: bool,
     #[serde(flatten)]
     pub extra: Map<String, Value>,
 }
@@ -58,6 +61,7 @@ impl Default for AppOptions {
             pause_fullscreen: true,
             max_fps: default_max_fps(),
             memory_saver: true,
+            mute_wallpapers: false,
             extra: Map::new(),
         }
     }
@@ -176,6 +180,7 @@ mod tests {
         assert!(preferences.app_options.pause_fullscreen);
         assert_eq!(preferences.app_options.max_fps, 30);
         assert!(!preferences.app_options.run_on_startup);
+        assert!(!preferences.app_options.mute_wallpapers);
         assert_eq!(
             preferences.extra["modData"]["C:/wallpapers/one"]["note"],
             json!("keep")
@@ -209,6 +214,7 @@ mod tests {
                 "pauseFullscreen": false,
                 "maxFps": 60,
                 "memorySaver": true,
+                "muteWallpapers": true,
                 "allowNotifs": false
             }
         }"#;
@@ -218,12 +224,14 @@ mod tests {
         assert!(!preferences.app_options.pause_fullscreen);
         assert_eq!(preferences.app_options.max_fps, 60);
         assert!(preferences.app_options.memory_saver);
+        assert!(preferences.app_options.mute_wallpapers);
         assert_eq!(preferences.app_options.extra["allowNotifs"], json!(false));
 
         let encoded = serde_json::to_string(&preferences).unwrap();
         let decoded: Preferences = serde_json::from_str(&encoded).unwrap();
         assert!(decoded.app_options.run_on_startup);
         assert!(decoded.app_options.memory_saver);
+        assert!(decoded.app_options.mute_wallpapers);
         assert_eq!(decoded.app_options.max_fps, 60);
     }
 

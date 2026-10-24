@@ -22,7 +22,9 @@ use webview2_com::Microsoft::Web::WebView2::Win32::{
     COREWEBVIEW2_MOUSE_EVENT_VIRTUAL_KEYS_MIDDLE_BUTTON,
     COREWEBVIEW2_MOUSE_EVENT_VIRTUAL_KEYS_NONE, COREWEBVIEW2_MOUSE_EVENT_VIRTUAL_KEYS_RIGHT_BUTTON,
 };
-use webview2_com::Microsoft::Web::WebView2::Win32::{ICoreWebView2, ICoreWebView2Environment3};
+use webview2_com::Microsoft::Web::WebView2::Win32::{
+    ICoreWebView2, ICoreWebView2_8, ICoreWebView2Environment3,
+};
 use webview2_com::take_pwstr;
 use windows::Win32::Foundation::{
     COLORREF, ERROR_SUCCESS, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM,
@@ -34,7 +36,7 @@ use windows::Win32::Graphics::Gdi::{
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::System::Registry::{HKEY_CURRENT_USER, RRF_RT_REG_DWORD, RegGetValueW};
 use windows::Win32::UI::WindowsAndMessaging::*;
-use windows::core::{BOOL, PCWSTR, PWSTR, w};
+use windows::core::{BOOL, Interface, PCWSTR, PWSTR, w};
 
 const WALLPAPER_CLASS: PCWSTR = w!("OctosWallpaperWindow");
 const WATCHDOG_TIMER_ID: usize = 2;
@@ -127,6 +129,7 @@ struct WallpaperState {
     fixed_chrome_windows: HashSet<isize>,
     session: Session,
     fps_cap: u32,
+    muted: bool,
     last_foreground: HWND,
     last_fullscreen_check: Instant,
     last_overlay_check: Instant,
@@ -146,6 +149,7 @@ impl Default for WallpaperState {
             fixed_chrome_windows: HashSet::new(),
             session: Session::default(),
             fps_cap: 30,
+            muted: false,
             last_foreground: HWND::default(),
             last_fullscreen_check: Instant::now(),
             last_overlay_check: Instant::now(),
@@ -287,6 +291,36 @@ pub fn set_fps_cap(fps: u32) {
             }
         }
     });
+}
+
+/// Mute or unmute every wallpaper page. New controllers inherit the flag.
+pub fn set_muted(muted: bool) {
+    with_state(|state| state.muted = muted);
+    let webviews = with_state(|state| {
+        state
+            .slots
+            .iter()
+            .filter_map(|slot| slot.webview.as_ref().map(|webview| webview.webview.clone()))
+            .collect::<Vec<_>>()
+    })
+    .unwrap_or_default();
+    let mut applied = 0;
+    for webview in webviews {
+        if let Ok(muted_webview) = webview.cast::<ICoreWebView2_8>() {
+            let mut current = BOOL::from(false);
+            unsafe {
+                let _ = muted_webview.SetIsMuted(muted);
+                if muted_webview.IsMuted(&mut current).is_ok() && current.as_bool() == muted {
+                    applied += 1;
+                }
+            }
+        }
+    }
+    info!("wallpaper audio muted={muted} ({applied} page(s))");
+}
+
+pub fn is_muted() -> bool {
+    with_state(|state| state.muted).unwrap_or(false)
 }
 
 pub fn set_pause_fullscreen(enabled: bool) {
@@ -819,6 +853,7 @@ impl WallpaperState {
             entry_url,
             device_name.clone(),
             self.fps_cap,
+            self.muted,
             move |webview, text| {
                 handle_wallpaper_message(&message_device, hwnd, webview, text);
             },

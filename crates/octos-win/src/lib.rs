@@ -59,6 +59,7 @@ const TRAY_ID: u32 = 1;
 const MENU_OPEN: usize = 1;
 const MENU_QUIT: usize = 2;
 const MENU_LITE: usize = 3;
+const MENU_MUTE: usize = 4;
 
 /// One-shot timer that opens DevTools after the wallpaper controllers exist.
 const DEVTOOLS_TIMER_ID: usize = 3;
@@ -71,6 +72,7 @@ type DisplayChangeHandler = Rc<dyn Fn()>;
 type LibraryChangeHandler = Rc<dyn Fn()>;
 type FrontendFactory = Rc<dyn Fn()>;
 type LiteModeHandler = Rc<dyn Fn(bool)>;
+type MuteHandler = Rc<dyn Fn(bool)>;
 
 struct WinState {
     hwnd: HWND,
@@ -83,6 +85,7 @@ struct WinState {
     lite_mode: bool,
     frontend_factory: Option<FrontendFactory>,
     lite_mode_handler: Option<LiteModeHandler>,
+    mute_handler: Option<MuteHandler>,
     drop_handler: Option<DropHandler>,
     command_handler: Option<CommandHandler>,
     placement_handler: Option<PlacementHandler>,
@@ -104,6 +107,7 @@ impl Default for WinState {
             lite_mode: false,
             frontend_factory: None,
             lite_mode_handler: None,
+            mute_handler: None,
             drop_handler: None,
             command_handler: None,
             placement_handler: None,
@@ -661,6 +665,19 @@ pub fn set_lite_mode(enabled: bool) {
     }
 }
 
+/// Register the app callback used when the tray menu toggles wallpaper audio.
+pub fn set_mute_handler(handler: impl Fn(bool) + 'static) {
+    with_state(|state| state.mute_handler = Some(Rc::new(handler)));
+}
+
+fn toggle_mute() {
+    let enabled = !crate::wallpaper::is_muted();
+    let handler = with_state(|state| state.mute_handler.clone());
+    if let Some(handler) = handler {
+        handler(enabled);
+    }
+}
+
 fn toggle_lite_mode() {
     let enabled = !lite_mode();
     let handler = with_state(|state| state.lite_mode_handler.clone());
@@ -877,6 +894,12 @@ fn show_tray_menu(hwnd: HWND) {
             MF_STRING | MF_UNCHECKED
         };
         let _ = AppendMenuW(menu, lite_flags, MENU_LITE, w!("轻量模式"));
+        let mute_flags = if crate::wallpaper::is_muted() {
+            MF_STRING | MF_CHECKED
+        } else {
+            MF_STRING | MF_UNCHECKED
+        };
+        let _ = AppendMenuW(menu, mute_flags, MENU_MUTE, w!("静音壁纸"));
         let _ = AppendMenuW(menu, MF_SEPARATOR, 0, w!(""));
         let _ = AppendMenuW(menu, MF_STRING, MENU_QUIT, w!("退出"));
 
@@ -900,6 +923,7 @@ fn show_tray_menu(hwnd: HWND) {
         match command {
             MENU_OPEN => restore_main_window(),
             MENU_LITE => toggle_lite_mode(),
+            MENU_MUTE => toggle_mute(),
             MENU_QUIT => quit(hwnd),
             _ => {}
         }
