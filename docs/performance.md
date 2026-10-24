@@ -108,3 +108,20 @@
 - **隐藏不等于停算**：同一 L2D 资源在全屏隐藏后 Rust 版仍有 37% CPU（WE 的 L2D 包隐藏后只有 3%），说明部分 L2D 页面在 `SetIsVisible(false)` 后仍继续跑 JS/rAF；后续应对隐藏的壁纸 controller 调 `TrySuspend` 或注入暂停脚本。
 - **息屏**：两者都没有显式暂停；Rust 版 38.4% vs C++ 34.4%，都需要后续的锁屏/息屏暂停规则。
 - 图片壁纸（Rust）3.3% / 1039 MB；原版没有图片壁纸可比。
+
+## 2026-10-24 Wallpaper Engine 对照（同一小桃女仆壁纸）
+
+用户在 Wallpaper Engine 中打开 workshop `3253308696`（小桃女仆）后的实测（10 秒采样，按进程路径过滤 `wallpaper_engine`）：
+
+| 进程 | 工作集 | 私有内存 | 单核 CPU |
+|---|---:|---:|---:|
+| `wallpaper64.exe`（主程序） | 56 MB | 24 MB | 0.0% |
+| `webwallpaper64.exe` 宿主 | 134 MB | 50 MB | 1.2% |
+| `webwallpaper64.exe` GPU 进程 | 947 MB | 851 MB | 22.7% |
+| `webwallpaper64.exe` 页面渲染进程 | 178 MB | 61 MB | 21.1% |
+| 网络/其他 `webwallpaper64.exe` | 66 MB | 25 MB | 0.3% |
+| **合计** | **1381 MB** | **1012 MB** | **45.3%** |
+
+对比 Octocaris 渲染同一张 `3253308696`：**1444 MB 工作集 / 27.8% CPU（30 FPS）**。
+
+结论：两者内存几乎相同（Wallpaper Engine 略低约 4%），主要占用都来自 Chromium 的 GPU/渲染进程；这不是 Octocaris 的泄漏。CPU 差异来自帧率：Wallpaper Engine 不限制帧率（约 45%），Octocaris 默认 30 FPS（约 28%）；Octocaris 不限帧时 CPU 会更高。
