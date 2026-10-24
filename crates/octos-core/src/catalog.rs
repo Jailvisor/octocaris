@@ -25,6 +25,14 @@ pub enum CatalogError {
     },
 }
 
+/// Built-in mods that act as fallbacks or diagnostics; never shown as user
+/// wallpapers and never allowed into rotation.
+pub const HIDDEN_MODS: [&str; 3] = ["default", "gradient", "conformance"];
+
+pub fn is_hidden_mod(folder_name: &str) -> bool {
+    HIDDEN_MODS.contains(&folder_name)
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModCard {
     pub folder_name: String,

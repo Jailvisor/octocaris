@@ -9,9 +9,9 @@
     "primary": "主导航"
   },
   "common": {
-    "showGradient": "显示渐变壁纸",
     "clearWallpaper": "清除壁纸",
-    "dismiss": "关闭"
+    "dismiss": "关闭",
+    "showDefault": "显示默认壁纸"
   },
   "library": {
     "title": "壁纸库",

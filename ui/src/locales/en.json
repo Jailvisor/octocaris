@@ -9,9 +9,9 @@
     "primary": "Primary"
   },
   "common": {
-    "showGradient": "Show gradient",
     "clearWallpaper": "Clear wallpaper",
-    "dismiss": "Dismiss"
+    "dismiss": "Dismiss",
+    "showDefault": "Show default wallpaper"
   },
   "library": {
     "title": "Library",

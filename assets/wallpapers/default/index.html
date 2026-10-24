@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Default wallpaper</title>
+  <style>
+    html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #000; }
+    #image { display: block; width: 100%; height: 100%; object-fit: cover; }
+  </style>
+</head>
+<body>
+  <img id="image" src="./image.jpg" alt="">
+  <script>
+    (() => {
+      const image = document.getElementById('image');
+      const apply = (options) => {
+        const fit = options && options.fit && options.fit.value;
+        if (fit === 'cover' || fit === 'contain' || fit === 'fill') {
+          image.style.objectFit = fit;
+        }
+      };
+      const bridge = window.chrome && window.chrome.webview;
+      if (!bridge) return;
+      const requestId = 'image-options-' + Math.random().toString(36).slice(2);
+      const onMessage = (event) => {
+        const message = event.data;
+        if (!message) return;
+        if (message.type === 'response' && message.requestId === requestId) {
+          apply(message.data);
+        } else if (message.type === 'event' && message.eventType === 'options-change'
+          && message.data && message.data.id === 'fit') {
+          apply({ fit: { value: message.data.value } });
+        }
+      };
+      bridge.addEventListener('message', onMessage);
+      bridge.postMessage({ type: 'request', requestType: 'options', requestId, data: {} });
+    })();
+  </script>
+</body>
+</html>

@@ -87,7 +87,7 @@ fn runnable_items(paths: &Paths, playlist: &Playlist, order: &[String]) -> Vec<I
     report
         .mods
         .iter()
-        .filter(|card| card.folder_name != "gradient" && card.folder_name != "conformance")
+        .filter(|card| !catalog::is_hidden_mod(&card.folder_name))
         .filter_map(|card| {
             let key = card.folder_path.to_string_lossy();
             if !playlist.items.iter().any(|item| item.as_str() == key) {
@@ -133,18 +133,10 @@ pub fn reset_schedule() {
 /// Built-in mods are fallbacks, not user wallpapers: keep them out of playlists
 /// written by earlier builds.
 pub fn sanitize_items(paths: &Paths) {
-    let hidden = [
-        paths
-            .wallpapers
-            .join("gradient")
-            .to_string_lossy()
-            .to_string(),
-        paths
-            .wallpapers
-            .join("conformance")
-            .to_string_lossy()
-            .to_string(),
-    ];
+    let hidden: Vec<String> = catalog::HIDDEN_MODS
+        .iter()
+        .map(|name| paths.wallpapers.join(name).to_string_lossy().to_string())
+        .collect();
     let changed = {
         let mut guard = crate::PREFERENCES
             .lock()

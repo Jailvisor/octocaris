@@ -194,7 +194,7 @@ function EmptyLibrary({
       </div>
       <div className="empty-secondary">
         <button className="button ghost" onClick={onShow}>
-          {t('common.showGradient')}
+          {t('common.showDefault')}
         </button>
         <button className="button ghost" onClick={onClear} disabled={!active}>
           {t('common.clearWallpaper')}
@@ -1281,7 +1281,7 @@ export default function App() {
     })
   }, [])
 
-  function showGradient() {
+  function showDefaultWallpaper() {
     if (isHosted()) {
       send({ type: 'show-wallpaper' })
     }
@@ -1645,7 +1645,7 @@ export default function App() {
                 <>
                   <EmptyLibrary
                     active={wallpaperActive}
-                    onShow={showGradient}
+                    onShow={showDefaultWallpaper}
                     onClear={clearWallpaper}
                     onInstall={installMod}
                     onImport={installFolder}

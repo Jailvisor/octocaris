@@ -1,0 +1,16 @@
+{
+  "name": "Default",
+  "author": "Octos",
+  "description": "Built-in fallback wallpaper.",
+  "image": "image.jpg",
+  "entry": "index.html",
+  "version": "1.0.0",
+  "options": {
+    "fit": {
+      "type": "select",
+      "label": "Image fit",
+      "options": ["cover", "contain", "fill"],
+      "value": "cover"
+    }
+  }
+}

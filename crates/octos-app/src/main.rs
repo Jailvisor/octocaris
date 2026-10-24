@@ -36,6 +36,10 @@ static PENDING_CLI: Mutex<Vec<Command>> = Mutex::new(Vec::new());
 static PREFS_WRITER: Mutex<Option<octos_storage::PrefsWriter>> = Mutex::new(None);
 static THUMBNAIL_BACKFILL_RUNNING: AtomicBool = AtomicBool::new(false);
 
+/// Built-in wallpaper used when nothing is selected or a mod disappears.
+const DEFAULT_WALLPAPER: &str = "default";
+const DEFAULT_WALLPAPER_ENTRY: &str = "https://local.octos/default/index.html";
+
 /// One-second timer that drives wallpaper rotation. Timer ids 2 (watchdog) and
 /// 3 (devtools) are already taken on the UI thread.
 const ROTATION_TIMER_ID: usize = 4;
@@ -187,7 +191,7 @@ fn run(paths: Paths) -> Result<()> {
     let app_dir = paths.app_dir();
     let wallpapers_dir = paths.wallpapers.clone();
     let wallpaper_folder =
-        std::env::var("OCTOS_TEST_MOD_FOLDER").unwrap_or_else(|_| "gradient".to_string());
+        std::env::var("OCTOS_TEST_MOD_FOLDER").unwrap_or_else(|_| DEFAULT_WALLPAPER.to_string());
     let wallpaper_key = paths
         .wallpapers
         .join(&wallpaper_folder)
@@ -253,7 +257,7 @@ fn run(paths: Paths) -> Result<()> {
                                             version: PROTOCOL_VERSION.to_string(),
                                         }),
                                         UiRequest::ShowWallpaper => {
-                                            let url = "https://local.octos/gradient/index.html";
+                                            let url = DEFAULT_WALLPAPER_ENTRY;
                                             match octos_win::wallpaper::show_all(url) {
                                                 Ok(()) => Some(UiResponse::WallpaperState {
                                                     active: true,
@@ -500,11 +504,13 @@ fn run(paths: Paths) -> Result<()> {
                                         }
                                         UiRequest::RemoveMod { folder_path } => {
                                             if FsPath::new(&folder_path)
-                                                == library_paths.wallpapers.join("gradient")
+                                                == library_paths.wallpapers.join(DEFAULT_WALLPAPER)
+                                                || FsPath::new(&folder_path)
+                                                    == library_paths.wallpapers.join("gradient")
                                             {
                                                 return Some(UiResponse::Error {
                                             message:
-                                                "the built-in Gradient wallpaper cannot be removed"
+                                                "the built-in default wallpaper cannot be removed"
                                                     .to_string(),
                                         });
                                             }
@@ -523,7 +529,7 @@ fn run(paths: Paths) -> Result<()> {
                                                 Ok(()) => {
                                                     octos_win::wallpaper::forget_mod(&folder_path);
                                                     for monitor in affected {
-                                                        fallback_to_gradient(
+                                                        fallback_to_default(
                                                             &library_paths,
                                                             &monitor,
                                                         );
@@ -1020,7 +1026,8 @@ pub(crate) fn stored_options(folder: &str) -> Option<OptionsMap> {
 }
 
 fn default_wallpaper(paths: &Paths) -> (String, String, OptionsMap) {
-    let folder = std::env::var("OCTOS_TEST_MOD_FOLDER").unwrap_or_else(|_| "gradient".to_string());
+    let folder =
+        std::env::var("OCTOS_TEST_MOD_FOLDER").unwrap_or_else(|_| DEFAULT_WALLPAPER.to_string());
     let folder_path = paths.wallpapers.join(&folder);
     let manifest = ModManifest::load(&folder_path).ok();
     let key = folder_path.to_string_lossy().to_string();
@@ -1090,7 +1097,7 @@ pub(crate) fn push_library(paths: &Paths) {
 
 /// A monitor was added, removed or moved. Reconcile already rebuilt the slots;
 /// here we restore saved selections and give brand-new monitors a wallpaper
-/// (the primary display's mod, or the built-in gradient).
+/// (the primary display's mod, or the built-in default wallpaper).
 fn handle_display_change(paths: &Paths) {
     if !WALLPAPERS_READY.load(Ordering::SeqCst) {
         return;
@@ -1133,29 +1140,29 @@ fn resolved_mod(paths: &Paths, folder_path: &str) -> Option<(String, OptionsMap)
     Some((entry_url, defaults))
 }
 
-fn fallback_to_gradient(paths: &Paths, monitor: &str) {
+fn fallback_to_default(paths: &Paths, monitor: &str) {
     let key = paths
         .wallpapers
-        .join("gradient")
+        .join(DEFAULT_WALLPAPER)
         .to_string_lossy()
         .to_string();
     if let Err(err) = set_monitor_mod(paths, monitor, &key) {
-        warn!("could not restore the gradient on {monitor}: {err:?}");
+        warn!("could not restore the default wallpaper on {monitor}: {err:?}");
     }
 }
 
 fn apply_startup_preferences(
     preferences: &Preferences,
-    gradient_key: &str,
-    gradient_entry: &str,
-    gradient_options: &OptionsMap,
+    fallback_key: &str,
+    fallback_entry: &str,
+    fallback_options: &OptionsMap,
     paths: &Paths,
 ) {
     let monitors = octos_win::wallpaper::monitor_ids();
     if preferences.selected.is_empty() {
-        octos_win::wallpaper::set_all_mod(gradient_key.to_string(), gradient_options.clone());
-        if let Err(err) = octos_win::wallpaper::show_all(gradient_entry) {
-            error!("could not show the built-in gradient: {err:?}");
+        octos_win::wallpaper::set_all_mod(fallback_key.to_string(), fallback_options.clone());
+        if let Err(err) = octos_win::wallpaper::show_all(fallback_entry) {
+            error!("could not show the built-in default wallpaper: {err:?}");
         }
         return;
     }
@@ -1186,15 +1193,15 @@ fn apply_startup_preferences(
             }
         });
         if !applied {
-            let stored = preferences.options_for(gradient_key).cloned();
+            let stored = preferences.options_for(fallback_key).cloned();
             if let Err(err) = octos_win::wallpaper::set_monitor_mod_with(
                 &monitor,
-                gradient_key.to_string(),
-                gradient_entry.to_string(),
-                gradient_options.clone(),
+                fallback_key.to_string(),
+                fallback_entry.to_string(),
+                fallback_options.clone(),
                 stored,
             ) {
-                error!("could not restore the gradient on {monitor}: {err:?}");
+                error!("could not restore the default wallpaper on {monitor}: {err:?}");
             }
         }
     }
@@ -1204,7 +1211,7 @@ fn library_snapshot(paths: &Paths) -> anyhow::Result<serde_json::Value> {
     let octos_core::catalog::ScanReport { mods, errors } = catalog::scan(&paths.wallpapers)?;
     let mut mods: Vec<_> = mods
         .into_iter()
-        .filter(|card| card.folder_name != "conformance" && card.folder_name != "gradient")
+        .filter(|card| !catalog::is_hidden_mod(&card.folder_name))
         .collect();
     {
         let guard = PREFERENCES

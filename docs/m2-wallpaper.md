@@ -196,5 +196,5 @@ SetLayeredWindowAttributes(hwnd, COLORREF(0), 255, LWA_ALPHA);
 - `docs/upstream-map.md` — Rust ↔ C++ 模块映射、有意差异、已修复偏差和新增 Win32 行为规则。
 - `crates/octos-win/src/wallpaper.rs` — 显示器 registry、挂载、输入、watchdog、全屏、覆盖层穿透。
 - `crates/octos-webview/src/lib.rs` — CompositionController + DComp + 透明背景 + 壁纸导航。
-- `assets/wallpapers/gradient/` — 内置测试壁纸。
+- `assets/wallpapers/default/` — 内置兜底壁纸（2026-10-24 起替换原来的 gradient）。
 - `crates/octos-app/src/main.rs` — 启动时初始化壁纸、显示 gradient、UI 命令。
