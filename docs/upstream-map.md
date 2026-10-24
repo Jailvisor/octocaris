@@ -112,12 +112,13 @@
 - **修复**：用 `CreateToolhelp32Snapshot` 沿父进程链判断窗口是否属于 `octos.exe` 的 WebView2 进程（`octos-win::is_our_webview_window`）。只有自己的覆盖层会被改成点击穿透；其它 Chrome/Edge 窗口继续走正常全屏检测，全屏时壁纸按规则隐藏。
 - **证据**：用一个独立进程创建类名为 `Chrome_WidgetWin_1`、矩形等于 2880×1800 的测试窗口，5 秒内 ex-style 保持 `0x100`（未被修改），同时日志出现 `monitor \\.\DISPLAY2 fullscreen=true/false`；自己的 `msedgewebview2` 覆盖层仍有 `made WebView2 overlay ... click-through` 日志。测试脚本：`E:\file\octos\test-foreign-chrome-window.ps1`。
 
-### 4.6 壁纸 WebView 的光栅化比例（DPI）
+### 4.6 壁纸 WebView 的光栅化比例（DPI，实验后回退）
 
-- **偏差**：`ICoreWebView2CompositionController` 创建后没有设置 `RasterizationScale`，默认 1.0。200% 缩放的显示器上，壁纸页面因此认为自己是 2880 CSS 像素、DPR 1。
-- **后果**：L2D/HTML 页面按错误的比例排版和选择画布/贴图，视觉上比 Wallpaper Engine（按 DPR 2 渲染）软、细节少。
-- **修复**：对 `ICoreWebView2Controller3` 设置 `ShouldDetectMonitorScaleChanges(true)` 和 `RasterizationScale = GetDpiForWindow(hwnd) / 96.0`（200% → 2.0）；物理 bounds 不变。
-- **证据**：日志 `wallpaper DPI 192 -> rasterization scale 2`；同分辨率下壁纸细节与 Wallpaper Engine 对齐。
+- **现象**：Composition controller 的 `RasterizationScale` 默认是 **1.0**（日志 `wallpaper DPI 192, rasterization scale 1`）。在 200% 显示器上页面会按 2880 CSS 像素 / DPR 1 渲染，L2D/HTML 壁纸可能比 Wallpaper Engine 软。
+- **尝试**：对 `ICoreWebView2Controller3` 设 `ShouldDetectMonitorScaleChanges(true)` + `SetRasterizationScale(2.0)`。
+- **结果**：合成壁纸全部变黑（不同壁纸都黑屏），Desktop 层没有画面。
+- **处理**：已回退，保留 WebView2 默认值；目前只记录 DPI 和实际 rasterization scale 日志，不修改。
+- **后续候选**：给壁纸单独创建带 `--force-device-scale-factor=2` 的 WebView2 environment，或在创建 composition target 之前设置 scale；都需要先在隔离环境验证不会再次黑屏。
 
 ### 4.7 `GetParent` 诊断误用
 

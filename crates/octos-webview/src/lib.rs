@@ -465,21 +465,15 @@ impl CompositionDevice {
                         controller.SetBounds(client)?;
                         controller.SetIsVisible(true)?;
 
-                        // WebView2 defaults to a 1.0 rasterization scale. Without
-                        // this the page believes the display is 2880 CSS pixels at
-                        // DPR 1 on a 200% monitor, so L2D/HTML wallpapers look
-                        // softer than in Wallpaper Engine.
+                        // Read-only diagnostic: forcing RasterizationScale on a
+                        // composition controller makes the wallpaper render black,
+                        // so leave WebView2's default in place.
                         let dpi = GetDpiForWindow(hwnd);
-                        let scale = if dpi >= 96 {
-                            f64::from(dpi) / 96.0
-                        } else {
-                            1.0
-                        };
                         if let Ok(controller3) = controller.cast::<ICoreWebView2Controller3>() {
-                            let _ = controller3.SetShouldDetectMonitorScaleChanges(true);
-                            let _ = controller3.SetRasterizationScale(scale);
+                            let mut current = 0.0;
+                            let _ = controller3.RasterizationScale(&mut current);
+                            info!("wallpaper DPI {dpi}, rasterization scale {current}");
                         }
-                        info!("wallpaper DPI {dpi} -> rasterization scale {scale}");
 
                         // Isolate local/session storage per monitor before the
                         // page runs, so wallpapers with their own settings panel
