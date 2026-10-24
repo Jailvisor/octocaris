@@ -61,35 +61,41 @@ struct Item {
     defaults: OptionsMap,
 }
 
-fn current_playlist() -> Option<Playlist> {
-    crate::PREFERENCES
+/// Playlist and library order read under one lock so a reorder cannot land
+/// between them.
+fn rotation_state() -> Option<(Playlist, Vec<String>)> {
+    let guard = crate::PREFERENCES
         .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .as_ref()
-        .map(|preferences| preferences.playlist.clone())
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let preferences = guard.as_ref()?;
+    Some((
+        preferences.playlist.clone(),
+        preferences.library_order.clone(),
+    ))
 }
 
-/// Playlist order restricted to entries that still resolve to a runnable mod.
-fn runnable_items(paths: &Paths, playlist: &Playlist) -> Vec<Item> {
-    let report = match catalog::scan(&paths.wallpapers) {
+/// Playlist members that resolve to a runnable mod, in library-grid order.
+fn runnable_items(paths: &Paths, playlist: &Playlist, order: &[String]) -> Vec<Item> {
+    let mut report = match catalog::scan(&paths.wallpapers) {
         Ok(report) => report,
         Err(err) => {
             warn!("could not scan wallpapers for the playlist: {err:?}");
             return Vec::new();
         }
     };
-    playlist
-        .items
+    catalog::sort_by_order(&mut report.mods, order);
+    report
+        .mods
         .iter()
-        .filter_map(|key| {
-            let card = report.mods.iter().find(|card| {
-                card.folder_name != "gradient"
-                    && card.folder_name != "conformance"
-                    && card.folder_path.to_string_lossy() == key.as_str()
-            })?;
+        .filter(|card| card.folder_name != "gradient" && card.folder_name != "conformance")
+        .filter_map(|card| {
+            let key = card.folder_path.to_string_lossy();
+            if !playlist.items.iter().any(|item| item.as_str() == key) {
+                return None;
+            }
             let entry_url = card.entry_url.clone()?;
             Some(Item {
-                key: key.clone(),
+                key: key.into_owned(),
                 entry_url,
                 defaults: card.options.clone(),
             })
@@ -164,7 +170,13 @@ pub fn sanitize_items(paths: &Paths) {
             // A rotation with nothing to show must not stay "on".
             preferences.playlist.enabled = false;
         }
-        before != preferences.playlist.items.len() || emptied
+        let before_order = preferences.library_order.len();
+        preferences
+            .library_order
+            .retain(|item| !hidden.contains(item));
+        before != preferences.playlist.items.len()
+            || emptied
+            || before_order != preferences.library_order.len()
     };
     if changed {
         reset_schedule();
@@ -176,7 +188,7 @@ pub fn tick(paths: &Paths) {
     if !crate::WALLPAPERS_READY.load(Ordering::SeqCst) {
         return;
     }
-    let Some(playlist) = current_playlist() else {
+    let Some((playlist, order)) = rotation_state() else {
         return;
     };
     if !playlist.enabled {
@@ -193,11 +205,11 @@ pub fn tick(paths: &Paths) {
     ) {
         return;
     }
-    perform_switch(paths, &playlist, "interval");
+    perform_switch(paths, &playlist, &order, "interval");
 }
 
-fn perform_switch(paths: &Paths, playlist: &Playlist, reason: &str) -> bool {
-    let items = runnable_items(paths, playlist);
+fn perform_switch(paths: &Paths, playlist: &Playlist, order: &[String], reason: &str) -> bool {
+    let items = runnable_items(paths, playlist, order);
     if items.len() < 2 {
         reset_schedule();
         return false;
@@ -260,8 +272,9 @@ fn perform_switch(paths: &Paths, playlist: &Playlist, reason: &str) -> bool {
 /// item when `current` is stale). Used when rotation is enabled or the list is
 /// edited. Does not save preferences; the caller owns the command snapshot.
 pub fn apply_current(paths: &Paths) -> Result<bool> {
-    let playlist = current_playlist().ok_or_else(|| anyhow!("preferences are not loaded"))?;
-    let items = runnable_items(paths, &playlist);
+    let (playlist, order) =
+        rotation_state().ok_or_else(|| anyhow!("preferences are not loaded"))?;
+    let items = runnable_items(paths, &playlist, &order);
     let Some(item) = playlist
         .current
         .as_ref()
@@ -291,8 +304,9 @@ pub fn apply_current(paths: &Paths) -> Result<bool> {
 /// One explicit "next wallpaper" step (the UI button); ignores the interval.
 /// Returns false when nothing could be switched.
 pub fn next_now(paths: &Paths) -> Result<bool> {
-    let playlist = current_playlist().ok_or_else(|| anyhow!("preferences are not loaded"))?;
-    Ok(perform_switch(paths, &playlist, "next"))
+    let (playlist, order) =
+        rotation_state().ok_or_else(|| anyhow!("preferences are not loaded"))?;
+    Ok(perform_switch(paths, &playlist, &order, "next"))
 }
 
 /// A wallpaper was applied manually: restart the interval and adopt it as the

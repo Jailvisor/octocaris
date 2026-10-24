@@ -53,6 +53,9 @@ pub enum UiRequest {
     SetPlaylistRandom {
         random: bool,
     },
+    SetLibraryOrder {
+        items: Vec<String>,
+    },
     PlaylistNext,
     OpenWallpapersFolder,
     RefreshLibrary,
@@ -147,6 +150,16 @@ mod tests {
         let json = serde_json::to_string(&interval).unwrap();
         assert_eq!(json, r#"{"type":"set-playlist-interval","seconds":90}"#);
         assert_eq!(serde_json::from_str::<UiRequest>(&json).unwrap(), interval);
+
+        let order = UiRequest::SetLibraryOrder {
+            items: vec![r"C:\mods\b".into(), r"C:\mods\a".into()],
+        };
+        let json = serde_json::to_string(&order).unwrap();
+        assert_eq!(
+            json,
+            r#"{"type":"set-library-order","items":["C:\\mods\\b","C:\\mods\\a"]}"#
+        );
+        assert_eq!(serde_json::from_str::<UiRequest>(&json).unwrap(), order);
 
         let random = UiRequest::SetPlaylistRandom { random: true };
         let json = serde_json::to_string(&random).unwrap();

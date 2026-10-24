@@ -39,7 +39,7 @@
     "installDone": "安装完成，壁纸库已更新。",
     "stats": "{{mods}} 个壁纸 · {{monitors}} 台显示器",
     "inUse": "使用中",
-    "keyboardHint": "使用方向键浏览壁纸",
+    "keyboardHint": "方向键浏览壁纸，Alt+↑/↓ 调整顺序，拖动卡片也可以排序",
     "addImage": "添加图片",
     "addImageHint": "把 PNG、JPEG、WebP、GIF 或 BMP 图片直接作为壁纸。",
     "confirm": "卸载",
@@ -120,8 +120,6 @@
     },
     "done": "完成",
     "next": "下一张",
-    "moveUp": "上移",
-    "moveDown": "下移",
     "remove": "移出轮换",
     "current": "当前",
     "badge": "轮换",
@@ -132,7 +130,7 @@
       "missing": "有 {{count}} 个条目已缺失",
       "active": "{{count}} 张壁纸参与轮换"
     },
-    "pickHint": "勾选卡片左上角的方框加入或移出轮换；Ctrl+A 全选，Ctrl+D 清空。",
+    "pickHint": "勾选卡片左上角的方框加入或移出轮换；拖动卡片调整顺序（Alt+↑/↓ 也可）；Ctrl+A 全选，Ctrl+D 清空。",
     "addTo": "加入轮换",
     "removeFrom": "移出轮换",
     "selectAll": "全选"

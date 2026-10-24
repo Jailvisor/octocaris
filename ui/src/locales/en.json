@@ -39,7 +39,7 @@
     "installDone": "Installed. The library has been updated.",
     "stats": "{{mods}} wallpapers · {{monitors}} displays",
     "inUse": "In use",
-    "keyboardHint": "Use the arrow keys to browse wallpapers",
+    "keyboardHint": "Arrow keys browse wallpapers; Alt+Up/Down or dragging reorders them",
     "addImage": "Add image",
     "addImageHint": "Use a PNG, JPEG, WebP, GIF or BMP file as a wallpaper.",
     "confirm": "Remove",
@@ -120,8 +120,6 @@
     },
     "done": "Done",
     "next": "Next now",
-    "moveUp": "Move up",
-    "moveDown": "Move down",
     "remove": "Remove from rotation",
     "current": "Showing",
     "badge": "Rotation",
@@ -132,7 +130,7 @@
       "missing": "{{count}} item(s) are missing",
       "active": "Rotating {{count}} wallpapers"
     },
-    "pickHint": "Tick a card's top-left checkbox to add or remove it; Ctrl+A selects all, Ctrl+D clears the list.",
+    "pickHint": "Tick a card's top-left checkbox to add or remove it; drag cards to reorder (Alt+Up/Down also works); Ctrl+A selects all, Ctrl+D clears.",
     "addTo": "Add to rotation",
     "removeFrom": "Remove from rotation",
     "selectAll": "Select all"

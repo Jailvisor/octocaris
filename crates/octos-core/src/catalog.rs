@@ -1,5 +1,6 @@
 //! Scan the wallpapers directory into UI-facing mod cards.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -100,6 +101,25 @@ pub fn scan(root: &Path) -> Result<ScanReport, CatalogError> {
     Ok(report)
 }
 
+/// Reorder cards so entries listed in `order` (absolute folder keys) come
+/// first in that sequence. Mods absent from `order` keep their existing
+/// (name-sorted) order at the end; stale keys are ignored; duplicate keys use
+/// the first position.
+pub fn sort_by_order(mods: &mut [ModCard], order: &[String]) {
+    if order.is_empty() {
+        return;
+    }
+    let mut rank: HashMap<&str, usize> = HashMap::with_capacity(order.len());
+    for (index, key) in order.iter().enumerate() {
+        rank.entry(key.as_str()).or_insert(index);
+    }
+    mods.sort_by_key(|card| {
+        rank.get(card.folder_path.to_string_lossy().as_ref())
+            .copied()
+            .unwrap_or(usize::MAX)
+    });
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -147,6 +167,51 @@ mod tests {
         );
         assert!(minimal.is_runnable());
         assert_eq!(minimal.options["speed"]["value"], 3);
+    }
+
+    #[test]
+    fn sort_by_order_puts_known_mods_first_and_appends_new_ones() {
+        let temp = tempfile::tempdir().unwrap();
+        for name in ["beta", "alpha", "gamma"] {
+            let folder = temp.path().join(name);
+            std::fs::create_dir_all(&folder).unwrap();
+            std::fs::write(
+                folder.join("octos.json"),
+                format!(
+                    r#"{{"name":"{}","image":"image.png","entry":"index.html"}}"#,
+                    name.to_uppercase()
+                ),
+            )
+            .unwrap();
+            std::fs::write(folder.join("image.png"), b"x").unwrap();
+            std::fs::write(folder.join("index.html"), b"x").unwrap();
+        }
+
+        let mut cards = scan(temp.path()).unwrap().mods;
+        let names = |cards: &[ModCard]| {
+            cards
+                .iter()
+                .map(|card| card.name.clone())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(names(&cards), vec!["ALPHA", "BETA", "GAMMA"]);
+
+        let gamma = cards[2].folder_path.to_string_lossy().to_string();
+        let alpha = cards[0].folder_path.to_string_lossy().to_string();
+        let stale = temp.path().join("gone").to_string_lossy().to_string();
+        sort_by_order(&mut cards, &[gamma.clone(), stale, alpha.clone(), gamma]);
+
+        assert_eq!(names(&cards), vec!["GAMMA", "ALPHA", "BETA"]);
+    }
+
+    #[test]
+    fn empty_order_keeps_scan_order() {
+        let report = scan(&fixtures()).unwrap();
+        let mut cards = report.mods;
+        let before: Vec<_> = cards.iter().map(|card| card.name.clone()).collect();
+        sort_by_order(&mut cards, &[]);
+        let after: Vec<_> = cards.iter().map(|card| card.name.clone()).collect();
+        assert_eq!(before, after);
     }
 
     #[test]

@@ -528,6 +528,17 @@ fn run(paths: Paths) -> Result<()> {
                                                             &monitor,
                                                         );
                                                     }
+                                                    if let Some(preferences) = PREFERENCES
+                                                        .lock()
+                                                        .unwrap_or_else(|poisoned| {
+                                                            poisoned.into_inner()
+                                                        })
+                                                        .as_mut()
+                                                    {
+                                                        preferences
+                                                            .library_order
+                                                            .retain(|item| item != &folder_path);
+                                                    }
                                                     rotation::on_mod_removed(
                                                         &library_paths,
                                                         &folder_path,
@@ -628,6 +639,34 @@ fn run(paths: Paths) -> Result<()> {
                                                     message: format!("{err}"),
                                                 }),
                                             }
+                                        }
+                                        UiRequest::SetLibraryOrder { items } => {
+                                            let items =
+                                                octos_core::playlist::normalize_items(items);
+                                            if items.len() > 10_000 {
+                                                return Some(UiResponse::Error {
+                                                    message: "the library order is too large"
+                                                        .to_string(),
+                                                });
+                                            }
+                                            if let Some(preferences) = PREFERENCES
+                                                .lock()
+                                                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                                                .as_mut()
+                                            {
+                                                // Keep entries the UI cannot see right now
+                                                // (offline drive, temporarily broken mod).
+                                                let mut next = items;
+                                                for old in preferences.library_order.clone() {
+                                                    if !next.iter().any(|item| item == &old) {
+                                                        next.push(old);
+                                                    }
+                                                }
+                                                preferences.library_order = next;
+                                            }
+                                            rotation::reset_schedule();
+                                            save_preferences(&library_paths);
+                                            library_response(&library_paths)
                                         }
                                         UiRequest::SetPlaylistInterval { seconds } => {
                                             let seconds =
@@ -1163,7 +1202,7 @@ fn apply_startup_preferences(
 
 fn library_snapshot(paths: &Paths) -> anyhow::Result<serde_json::Value> {
     let octos_core::catalog::ScanReport { mods, errors } = catalog::scan(&paths.wallpapers)?;
-    let mods: Vec<_> = mods
+    let mut mods: Vec<_> = mods
         .into_iter()
         .filter(|card| card.folder_name != "conformance" && card.folder_name != "gradient")
         .collect();
@@ -1171,6 +1210,9 @@ fn library_snapshot(paths: &Paths) -> anyhow::Result<serde_json::Value> {
         let guard = PREFERENCES
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if let Some(preferences) = guard.as_ref() {
+            catalog::sort_by_order(&mut mods, &preferences.library_order);
+        }
         for card in &mods {
             let folder = card.folder_path.to_string_lossy().to_string();
             let Ok(manifest) = ModManifest::load(&card.folder_path) else {
@@ -1227,18 +1269,20 @@ fn playlist_snapshot(mods: &[catalog::ModCard]) -> serde_json::Value {
         });
     };
     let playlist = &preferences.playlist;
-    let missing: Vec<&String> = playlist
-        .items
+    let grid: Vec<String> = mods
         .iter()
-        .filter(|key| {
-            !mods.iter().any(|card| {
-                card.entry_url.is_some() && card.folder_path.to_string_lossy() == key.as_str()
-            })
-        })
+        .filter(|card| card.entry_url.is_some())
+        .map(|card| card.folder_path.to_string_lossy().to_string())
+        .collect();
+    let items = octos_core::playlist::members_in_order(&playlist.items, &grid);
+    let present: std::collections::HashSet<&str> = grid.iter().map(String::as_str).collect();
+    let missing: Vec<&String> = items
+        .iter()
+        .filter(|key| !present.contains(key.as_str()))
         .collect();
     serde_json::json!({
         "enabled": playlist.enabled,
-        "items": playlist.items,
+        "items": items,
         "intervalSeconds": playlist.interval_seconds,
         "random": playlist.random,
         "current": playlist.current,

@@ -91,6 +91,10 @@ pub struct Preferences {
     /// simply fall back to a disabled playlist.
     #[serde(default)]
     pub playlist: Playlist,
+    /// Library grid order (absolute mod folder keys). Empty means the default
+    /// name order; paths not listed are appended after the known ones.
+    #[serde(default, rename = "libraryOrder")]
+    pub library_order: Vec<String>,
     /// Other fields written by Octos versions (`modData`, ...).
     #[serde(flatten)]
     pub extra: Map<String, Value>,
@@ -105,6 +109,7 @@ impl Default for Preferences {
             app_options: AppOptions::default(),
             window: None,
             playlist: Playlist::default(),
+            library_order: Vec::new(),
             extra: Map::new(),
         }
     }
@@ -245,6 +250,7 @@ mod tests {
         assert_eq!(preferences.playlist.interval_seconds, 30 * 60);
         assert!(!preferences.playlist.random);
         assert!(preferences.playlist.current.is_none());
+        assert!(preferences.library_order.is_empty());
     }
 
     #[test]
@@ -276,6 +282,22 @@ mod tests {
         let encoded = serde_json::to_string(&preferences).unwrap();
         let decoded: Preferences = serde_json::from_str(&encoded).unwrap();
         assert_eq!(decoded.playlist, preferences.playlist);
+    }
+
+    #[test]
+    fn library_order_round_trips() {
+        let text = r#"{
+            "libraryOrder": ["C:/wallpapers/b", "C:/wallpapers/a"]
+        }"#;
+        let preferences = Preferences::from_json(text).unwrap();
+        assert_eq!(
+            preferences.library_order,
+            vec!["C:/wallpapers/b", "C:/wallpapers/a"]
+        );
+
+        let encoded = serde_json::to_string(&preferences).unwrap();
+        let decoded: Preferences = serde_json::from_str(&encoded).unwrap();
+        assert_eq!(decoded.library_order, preferences.library_order);
     }
 
     #[test]

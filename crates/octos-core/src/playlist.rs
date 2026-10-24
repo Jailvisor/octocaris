@@ -97,6 +97,24 @@ pub fn is_due(elapsed: Duration, interval_seconds: u32) -> bool {
     elapsed >= Duration::from_secs(u64::from(clamp_interval(interval_seconds)))
 }
 
+/// Render playlist members in library-grid order. Members missing from the
+/// grid (deleted or offline) keep their stored order at the end.
+pub fn members_in_order(members: &[String], grid: &[String]) -> Vec<String> {
+    let mut seen = HashSet::new();
+    let mut ordered = Vec::with_capacity(members.len());
+    for path in grid {
+        if members.iter().any(|member| member == path) && seen.insert(path.clone()) {
+            ordered.push(path.clone());
+        }
+    }
+    for path in members {
+        if seen.insert(path.clone()) {
+            ordered.push(path.clone());
+        }
+    }
+    ordered
+}
+
 /// Trim, drop empty entries and de-duplicate while preserving order.
 pub fn normalize_items(items: Vec<String>) -> Vec<String> {
     let mut seen = HashSet::new();
@@ -148,6 +166,25 @@ mod tests {
             "c".to_string(),
         ];
         assert_eq!(normalize_items(items), vec!["a", "b", "c"]);
+    }
+
+    #[test]
+    fn members_follow_the_grid_order() {
+        let members = vec!["a".to_string(), "b".to_string(), "c".to_string()];
+        let grid = vec!["c".to_string(), "a".to_string()];
+        assert_eq!(members_in_order(&members, &grid), vec!["c", "a", "b"]);
+    }
+
+    #[test]
+    fn missing_members_keep_their_stored_order_and_duplicates_are_dropped() {
+        let members = vec![
+            "b".to_string(),
+            "gone".to_string(),
+            "a".to_string(),
+            "b".to_string(),
+        ];
+        let grid = vec!["a".to_string()];
+        assert_eq!(members_in_order(&members, &grid), vec!["a", "b", "gone"]);
     }
 
     #[test]

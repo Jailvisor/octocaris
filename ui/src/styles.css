@@ -716,6 +716,70 @@ h1 {
   width: 100%;
 }
 
+.mod-card-wrap.dragging {
+  opacity: 0.4;
+}
+
+.mod-card-wrap.dragging .mod-card {
+  transform: none;
+  box-shadow: none;
+}
+
+.mod-card-wrap.drop-before::before,
+.mod-card-wrap.drop-after::after {
+  content: "";
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+  pointer-events: none;
+}
+
+.mod-card-wrap.drop-before::before {
+  left: -7px;
+}
+
+.mod-card-wrap.drop-after::after {
+  right: -7px;
+}
+
+.drag-grip {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  color: var(--faint);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease;
+}
+
+.drag-grip svg {
+  width: 12px;
+  height: 12px;
+  fill: currentColor;
+}
+
+.mod-card-wrap:hover .drag-grip,
+.mod-card-wrap:focus-within .drag-grip {
+  opacity: 1;
+}
+
+.mod-grid.is-dragging .mod-card,
+.mod-grid.is-dragging .mod-card:hover {
+  transform: none;
+  box-shadow: none;
+  transition: none;
+}
+
 .rotation-check {
   position: absolute;
   top: 8px;

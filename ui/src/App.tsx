@@ -48,13 +48,24 @@ function monitorOptions(monitors: string[], names?: Record<string, string>) {
   })
 }
 
-function moveInList<T>(items: T[], from: number, to: number): T[] {
-  if (to < 0 || to >= items.length || from === to) {
+const CARD_DRAG_MIME = 'application/x-octos-card'
+
+function isCardDrag(dataTransfer: DataTransfer | null) {
+  return Boolean(dataTransfer && Array.from(dataTransfer.types).includes(CARD_DRAG_MIME))
+}
+
+/** Insert `items[from]` before original index `insertAt` (0..=len). */
+function moveBefore<T>(items: T[], from: number, insertAt: number): T[] {
+  if (from < 0 || from >= items.length) {
+    return items
+  }
+  const target = from < insertAt ? insertAt - 1 : insertAt
+  if (target < 0 || target >= items.length || target === from) {
     return items
   }
   const next = items.slice()
   const [item] = next.splice(from, 1)
-  next.splice(to, 0, item)
+  next.splice(target, 0, item)
   return next
 }
 
@@ -425,34 +436,107 @@ function ModDetail({
   )
 }
 
+function DragGripIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="9" cy="6" r="1.7" />
+      <circle cx="15" cy="6" r="1.7" />
+      <circle cx="9" cy="12" r="1.7" />
+      <circle cx="15" cy="12" r="1.7" />
+      <circle cx="9" cy="18" r="1.7" />
+      <circle cx="15" cy="18" r="1.7" />
+    </svg>
+  )
+}
+
 function ModCardTile({
   card,
   index,
   selected,
   tabbable,
   inPlaylist,
+  dragging,
+  dropBefore,
+  dropAfter,
   onSelect,
   onToggle,
+  onDragStart,
+  onDragOver,
+  onDrop,
+  onDragEnd,
 }: {
   card: ModCard
   index: number
   selected: boolean
   tabbable: boolean
   inPlaylist: boolean
+  dragging: boolean
+  dropBefore: boolean
+  dropAfter: boolean
   onSelect: (path: string) => void
   onToggle: (path: string) => void
+  onDragStart: (index: number) => void
+  onDragOver: (index: number, after: boolean) => void
+  onDrop: (index: number, after: boolean) => void
+  onDragEnd: () => void
 }) {
   const { t } = useTranslation()
   const [imageState, setImageState] = useState<'idle' | 'ready' | 'error'>(
     card.image_url ? 'idle' : 'error',
   )
+  const dragOriginIsInput = useRef(false)
 
   useEffect(() => {
     setImageState(card.image_url ? 'idle' : 'error')
   }, [card.image_url])
 
+  const wrapClass = [
+    'mod-card-wrap',
+    dragging ? 'dragging' : '',
+    dropBefore ? 'drop-before' : '',
+    dropAfter ? 'drop-after' : '',
+  ]
+    .filter(Boolean)
+    .join(' ')
+
   return (
-    <div className="mod-card-wrap">
+    <div
+      className={wrapClass}
+      draggable
+      data-path={card.folder_path}
+      onMouseDown={(event) => {
+        dragOriginIsInput.current = Boolean((event.target as Element).closest('input'))
+      }}
+      onDragStart={(event) => {
+        if (dragOriginIsInput.current) {
+          event.preventDefault()
+          return
+        }
+        event.dataTransfer.effectAllowed = 'move'
+        event.dataTransfer.setData(CARD_DRAG_MIME, card.folder_path)
+        onDragStart(index)
+      }}
+      onDragOver={(event) => {
+        if (!isCardDrag(event.dataTransfer)) {
+          return
+        }
+        event.preventDefault()
+        event.stopPropagation()
+        event.dataTransfer.dropEffect = 'move'
+        const rect = event.currentTarget.getBoundingClientRect()
+        onDragOver(index, event.clientX > rect.left + rect.width / 2)
+      }}
+      onDrop={(event) => {
+        if (!isCardDrag(event.dataTransfer)) {
+          return
+        }
+        event.preventDefault()
+        event.stopPropagation()
+        const rect = event.currentTarget.getBoundingClientRect()
+        onDrop(index, event.clientX > rect.left + rect.width / 2)
+      }}
+      onDragEnd={onDragEnd}
+    >
       <button
         type="button"
         role="option"
@@ -460,6 +544,7 @@ function ModCardTile({
         tabIndex={tabbable ? 0 : -1}
         data-mod-card
         data-index={index}
+        data-path={card.folder_path}
         className={selected ? 'mod-card selected' : 'mod-card'}
         onClick={() => onSelect(card.folder_path)}
         onFocus={() => onSelect(card.folder_path)}
@@ -496,6 +581,9 @@ function ModCardTile({
         title={inPlaylist ? t('playlist.removeFrom') : t('playlist.addTo')}
         onChange={() => onToggle(card.folder_path)}
       />
+      <span className="drag-grip" aria-hidden="true">
+        <DragGripIcon />
+      </span>
     </div>
   )
 }
@@ -506,21 +594,43 @@ function ModGrid({
   playlistPaths,
   onSelect,
   onToggle,
+  onReorder,
 }: {
   mods: ModCard[]
   selectedPath: string | null
   playlistPaths: string[]
   onSelect: (path: string) => void
   onToggle: (path: string) => void
+  onReorder: (from: number, insertAt: number) => void
 }) {
   const { t } = useTranslation()
   const gridRef = useRef<HTMLDivElement>(null)
+  const dragIndexRef = useRef<number | null>(null)
+  const [dragIndex, setDragIndex] = useState<number | null>(null)
+  const [overIndex, setOverIndex] = useState<number | null>(null)
+  const [dropAfter, setDropAfter] = useState(false)
+
+  function resetDrag() {
+    dragIndexRef.current = null
+    setDragIndex(null)
+    setOverIndex(null)
+  }
+
+  function handleDragStart(index: number) {
+    dragIndexRef.current = index
+    // Defer the faded class so Chromium does not snapshot it as the drag image.
+    requestAnimationFrame(() => setDragIndex(index))
+  }
+
+  function handleDrop(target: number, after: boolean) {
+    const from = dragIndexRef.current
+    if (from !== null) {
+      onReorder(from, target + (after ? 1 : 0))
+    }
+    resetDrag()
+  }
 
   function handleKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
-    const keys = ['ArrowRight', 'ArrowLeft', 'ArrowDown', 'ArrowUp', 'Home', 'End']
-    if (!keys.includes(event.key)) {
-      return
-    }
     const grid = gridRef.current
     if (!grid) {
       return
@@ -532,6 +642,28 @@ function ModGrid({
       (active as HTMLButtonElement | null)
     const current = activeCard ? cards.indexOf(activeCard) : -1
     if (current < 0) {
+      return
+    }
+
+    if (event.altKey) {
+      const delta = event.key === 'ArrowUp' ? -1 : event.key === 'ArrowDown' ? 1 : 0
+      if (delta === 0) {
+        return
+      }
+      event.preventDefault()
+      const path = mods[current]?.folder_path
+      onReorder(current, delta < 0 ? current - 1 : current + 2)
+      requestAnimationFrame(() => {
+        const moved = Array.from(
+          gridRef.current?.querySelectorAll<HTMLButtonElement>('[data-mod-card]') ?? [],
+        ).find((node) => node.dataset.path === path)
+        moved?.focus()
+      })
+      return
+    }
+
+    const keys = ['ArrowRight', 'ArrowLeft', 'ArrowDown', 'ArrowUp', 'Home', 'End']
+    if (!keys.includes(event.key)) {
       return
     }
     const columns = Math.max(
@@ -552,11 +684,30 @@ function ModGrid({
   return (
     <div
       ref={gridRef}
-      className="mod-grid"
+      className={dragIndex === null ? 'mod-grid' : 'mod-grid is-dragging'}
       role="listbox"
       aria-label={t('library.title')}
       title={t('library.keyboardHint')}
       onKeyDown={handleKeyDown}
+      onDragOver={(event) => {
+        if (!isCardDrag(event.dataTransfer)) {
+          return
+        }
+        event.preventDefault()
+        event.dataTransfer.dropEffect = 'move'
+        setOverIndex(null)
+      }}
+      onDrop={(event) => {
+        if (!isCardDrag(event.dataTransfer)) {
+          return
+        }
+        event.preventDefault()
+        const from = dragIndexRef.current
+        if (from !== null) {
+          onReorder(from, mods.length)
+        }
+        resetDrag()
+      }}
     >
       {mods.map((card, index) => (
         <ModCardTile
@@ -568,8 +719,22 @@ function ModGrid({
             card.folder_path === selectedPath || (!selectedPath && index === 0)
           }
           inPlaylist={playlistPaths.includes(card.folder_path)}
+          dragging={dragIndex === index}
+          dropBefore={
+            dragIndex !== null && overIndex === index && !dropAfter && dragIndex !== index
+          }
+          dropAfter={
+            dragIndex !== null && overIndex === index && dropAfter && dragIndex !== index
+          }
           onSelect={onSelect}
           onToggle={onToggle}
+          onDragStart={handleDragStart}
+          onDragOver={(target, after) => {
+            setOverIndex(target)
+            setDropAfter(after)
+          }}
+          onDrop={handleDrop}
+          onDragEnd={resetDrag}
         />
       ))}
     </div>
@@ -966,24 +1131,6 @@ function PlaylistPanel({
                   <div className="playlist-actions">
                     <button
                       type="button"
-                      className="icon-button"
-                      aria-label={t('playlist.moveUp')}
-                      disabled={index === 0}
-                      onClick={() => onSetItems(moveInList(items, index, index - 1))}
-                    >
-                      ↑
-                    </button>
-                    <button
-                      type="button"
-                      className="icon-button"
-                      aria-label={t('playlist.moveDown')}
-                      disabled={index === items.length - 1}
-                      onClick={() => onSetItems(moveInList(items, index, index + 1))}
-                    >
-                      ↓
-                    </button>
-                    <button
-                      type="button"
                       className="icon-button danger"
                       aria-label={t('playlist.remove')}
                       onClick={() => onSetItems(items.filter((item) => item !== path))}
@@ -1061,6 +1208,10 @@ export default function App() {
 
   useEffect(() => {
     function onDragStart(event: DragEvent) {
+      const target = event.target
+      if (target instanceof Element && target.closest('.mod-card-wrap')) {
+        return
+      }
       event.preventDefault()
     }
     window.addEventListener('dragstart', onDragStart)
@@ -1069,14 +1220,15 @@ export default function App() {
 
   useEffect(() => {
     function onDragOver(event: DragEvent) {
-      if (!event.dataTransfer) {
+      if (!event.dataTransfer || isCardDrag(event.dataTransfer)) {
+        return
+      }
+      if (!event.dataTransfer.types.includes('Files')) {
         return
       }
       event.preventDefault()
       event.dataTransfer.dropEffect = 'copy'
-      if (event.dataTransfer.types.includes('Files')) {
-        setDragging(true)
-      }
+      setDragging(true)
     }
     function onDragLeave(event: DragEvent) {
       if (event.relatedTarget === null) {
@@ -1084,6 +1236,9 @@ export default function App() {
       }
     }
     function onDrop(event: DragEvent) {
+      if (isCardDrag(event.dataTransfer)) {
+        return
+      }
       event.preventDefault()
       setDragging(false)
       const files = Array.from(event.dataTransfer?.files ?? [])
@@ -1307,6 +1462,23 @@ export default function App() {
     mutatePlaylist({ type: 'set-playlist-items', items }, { items })
   }
 
+  function reorderLibrary(from: number, insertAt: number) {
+    if (!library) {
+      return
+    }
+    const mods = moveBefore(library.mods, from, insertAt)
+    if (mods === library.mods) {
+      return
+    }
+    setLibrary({ ...library, mods })
+    if (isHosted()) {
+      send({
+        type: 'set-library-order',
+        items: mods.map((card) => card.folder_path),
+      })
+    }
+  }
+
   function togglePlaylistItem(folderPath: string) {
     setPlaylistItems(
       playlist.items.includes(folderPath)
@@ -1502,6 +1674,7 @@ export default function App() {
                     playlistPaths={playlist.items}
                     onSelect={setSelectedModPath}
                     onToggle={togglePlaylistItem}
+                    onReorder={reorderLibrary}
                   />
                   <div className="mod-detail-stack">
                     {selectedCard && (
