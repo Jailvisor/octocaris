@@ -4,6 +4,7 @@
 //! `octos_core::playlist`; this module owns the runtime clock, the random seed
 //! and the catalog lookup that turns folder keys into entry URLs.
 
+use std::collections::HashMap;
 use std::sync::atomic::Ordering;
 use std::sync::{Mutex, OnceLock};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
@@ -61,41 +62,37 @@ struct Item {
     defaults: OptionsMap,
 }
 
-/// Playlist and library order read under one lock so a reorder cannot land
-/// between them.
-fn rotation_state() -> Option<(Playlist, Vec<String>)> {
+fn rotation_state() -> Option<Playlist> {
     let guard = crate::PREFERENCES
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     let preferences = guard.as_ref()?;
-    Some((
-        preferences.playlist.clone(),
-        preferences.library_order.clone(),
-    ))
+    Some(preferences.playlist.clone())
 }
 
-/// Playlist members that resolve to a runnable mod, in library-grid order.
-fn runnable_items(paths: &Paths, playlist: &Playlist, order: &[String]) -> Vec<Item> {
-    let mut report = match catalog::scan(&paths.wallpapers) {
+/// Queue members that resolve to a runnable mod, in queue order.
+fn runnable_items(paths: &Paths, playlist: &Playlist) -> Vec<Item> {
+    let report = match catalog::scan(&paths.wallpapers) {
         Ok(report) => report,
         Err(err) => {
             warn!("could not scan wallpapers for the playlist: {err:?}");
             return Vec::new();
         }
     };
-    catalog::sort_by_order(&mut report.mods, order);
-    report
+    let cards: HashMap<String, &catalog::ModCard> = report
         .mods
         .iter()
         .filter(|card| !catalog::is_hidden_mod(&card.folder_name))
-        .filter_map(|card| {
-            let key = card.folder_path.to_string_lossy();
-            if !playlist.items.iter().any(|item| item.as_str() == key) {
-                return None;
-            }
+        .map(|card| (card.folder_path.to_string_lossy().into_owned(), card))
+        .collect();
+    playlist
+        .items
+        .iter()
+        .filter_map(|key| {
+            let card = cards.get(key)?;
             let entry_url = card.entry_url.clone()?;
             Some(Item {
-                key: key.into_owned(),
+                key: key.clone(),
                 entry_url,
                 defaults: card.options.clone(),
             })
@@ -180,7 +177,7 @@ pub fn tick(paths: &Paths) {
     if !crate::WALLPAPERS_READY.load(Ordering::SeqCst) {
         return;
     }
-    let Some((playlist, order)) = rotation_state() else {
+    let Some(playlist) = rotation_state() else {
         return;
     };
     if !playlist.enabled {
@@ -197,11 +194,11 @@ pub fn tick(paths: &Paths) {
     ) {
         return;
     }
-    perform_switch(paths, &playlist, &order, "interval");
+    perform_switch(paths, &playlist, "interval");
 }
 
-fn perform_switch(paths: &Paths, playlist: &Playlist, order: &[String], reason: &str) -> bool {
-    let items = runnable_items(paths, playlist, order);
+fn perform_switch(paths: &Paths, playlist: &Playlist, reason: &str) -> bool {
+    let items = runnable_items(paths, playlist);
     if items.len() < 2 {
         reset_schedule();
         return false;
@@ -264,9 +261,8 @@ fn perform_switch(paths: &Paths, playlist: &Playlist, order: &[String], reason: 
 /// item when `current` is stale). Used when rotation is enabled or the list is
 /// edited. Does not save preferences; the caller owns the command snapshot.
 pub fn apply_current(paths: &Paths) -> Result<bool> {
-    let (playlist, order) =
-        rotation_state().ok_or_else(|| anyhow!("preferences are not loaded"))?;
-    let items = runnable_items(paths, &playlist, &order);
+    let playlist = rotation_state().ok_or_else(|| anyhow!("preferences are not loaded"))?;
+    let items = runnable_items(paths, &playlist);
     let Some(item) = playlist
         .current
         .as_ref()
@@ -296,9 +292,8 @@ pub fn apply_current(paths: &Paths) -> Result<bool> {
 /// One explicit "next wallpaper" step (the UI button); ignores the interval.
 /// Returns false when nothing could be switched.
 pub fn next_now(paths: &Paths) -> Result<bool> {
-    let (playlist, order) =
-        rotation_state().ok_or_else(|| anyhow!("preferences are not loaded"))?;
-    Ok(perform_switch(paths, &playlist, &order, "next"))
+    let playlist = rotation_state().ok_or_else(|| anyhow!("preferences are not loaded"))?;
+    Ok(perform_switch(paths, &playlist, "next"))
 }
 
 /// A wallpaper was applied manually: restart the interval and adopt it as the

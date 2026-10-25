@@ -3,7 +3,7 @@
 日期：2026-10-22
 状态：**完成（spike 已退役，不是产品验收对象）**。核心验证、Explorer 重启恢复、21.5 分钟稳定性全部通过。Go/no-go：**go**。
 
-> **注意**：本报告只证明工具链和 Composition 路径。`octos-spike` 使用 WorkerW-first 挂载，没有 Chrome 覆盖层点击穿透、全屏/可见性门控、多显示器；**不要用它判断产品壁纸行为**。Windows 验收只用 `octos.exe`。差异表见下方 §Spike vs M2。
+> **注意**：本报告只证明工具链和 Composition 路径。`octos-spike` 使用 WorkerW-first 挂载，没有 Chrome 覆盖层点击穿透、全屏/可见性门控、多显示器；**不要用它判断产品壁纸行为**。Windows 验收只用 `octocaris.exe`。差异表见下方 §Spike vs M2。
 
 ## 环境
 

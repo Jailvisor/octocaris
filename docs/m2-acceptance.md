@@ -17,7 +17,7 @@
 
 | 验收项 | 结果 | 证据 |
 |---|---|---|
-| WSL 构建 x64 Windows exe | 通过 | `cargo xtask deploy`；`octos.exe` |
+| WSL 构建 x64 Windows exe | 通过 | `cargo xtask deploy`；`octocaris.exe` |
 | Win11 桌面挂载 | 通过 | 日志 `desktop attach: Progman path` |
 | 壁纸在图标下方 | 通过 | `OctosWallpaperWindow prev=SHELLDLL_DefView`、`belowIcons=True` |
 | 桌面图标可见/可点 | 通过 | `SysListView32 visible=True`；截图 `m2-icons.png`、`desktop-alpha-fixed.png` |

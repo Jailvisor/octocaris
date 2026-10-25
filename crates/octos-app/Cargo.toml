@@ -6,7 +6,7 @@ license.workspace = true
 rust-version.workspace = true
 
 [[bin]]
-name = "octos"
+name = "octocaris"
 path = "src/main.rs"
 
 [dependencies]

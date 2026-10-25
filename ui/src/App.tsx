@@ -502,100 +502,55 @@ function ModCardTile({
   index,
   selected,
   tabbable,
-  inPlaylist,
-  dragging,
-  dropBefore,
-  dropAfter,
-  onSelect,
-  onToggle,
-  onDragStart,
-  onDragOver,
-  onDrop,
-  onDragEnd,
+  queuePosition,
+  multiSelected,
+  onOpen,
+  onToggleSelection,
+  onAddToRotation,
+  onRemoveFromRotation,
 }: {
   card: ModCard
   index: number
   selected: boolean
   tabbable: boolean
-  inPlaylist: boolean
-  dragging: boolean
-  dropBefore: boolean
-  dropAfter: boolean
-  onSelect: (path: string) => void
-  onToggle: (path: string) => void
-  onDragStart: (index: number) => void
-  onDragOver: (index: number, after: boolean) => void
-  onDrop: (index: number, after: boolean) => void
-  onDragEnd: () => void
+  queuePosition: number | null
+  multiSelected: boolean
+  onOpen: (path: string) => void
+  onToggleSelection: (path: string) => void
+  onAddToRotation: (path: string) => void
+  onRemoveFromRotation: (path: string) => void
 }) {
   const { t } = useTranslation()
   const [imageState, setImageState] = useState<'idle' | 'ready' | 'error'>(
     card.image_url ? 'idle' : 'error',
   )
-  const dragOriginIsInput = useRef(false)
 
   useEffect(() => {
     setImageState(card.image_url ? 'idle' : 'error')
   }, [card.image_url])
 
-  const wrapClass = [
-    'mod-card-wrap',
-    dragging ? 'dragging' : '',
-    dropBefore ? 'drop-before' : '',
-    dropAfter ? 'drop-after' : '',
-  ]
-    .filter(Boolean)
-    .join(' ')
-
   return (
     <div
-      className={wrapClass}
-      draggable
+      className={multiSelected ? 'mod-card-wrap multi-selected' : 'mod-card-wrap'}
       data-path={card.folder_path}
-      onMouseDown={(event) => {
-        dragOriginIsInput.current = Boolean((event.target as Element).closest('input'))
-      }}
-      onDragStart={(event) => {
-        if (dragOriginIsInput.current) {
-          event.preventDefault()
-          return
-        }
-        event.dataTransfer.effectAllowed = 'move'
-        event.dataTransfer.setData(CARD_DRAG_MIME, card.folder_path)
-        onDragStart(index)
-      }}
-      onDragOver={(event) => {
-        if (!isCardDrag(event.dataTransfer)) {
-          return
-        }
-        event.preventDefault()
-        event.stopPropagation()
-        event.dataTransfer.dropEffect = 'move'
-        const rect = event.currentTarget.getBoundingClientRect()
-        onDragOver(index, event.clientX > rect.left + rect.width / 2)
-      }}
-      onDrop={(event) => {
-        if (!isCardDrag(event.dataTransfer)) {
-          return
-        }
-        event.preventDefault()
-        event.stopPropagation()
-        const rect = event.currentTarget.getBoundingClientRect()
-        onDrop(index, event.clientX > rect.left + rect.width / 2)
-      }}
-      onDragEnd={onDragEnd}
     >
       <button
         type="button"
         role="option"
-        aria-selected={selected}
+        aria-selected={selected || multiSelected}
         tabIndex={tabbable ? 0 : -1}
         data-mod-card
         data-index={index}
         data-path={card.folder_path}
         className={selected ? 'mod-card selected' : 'mod-card'}
-        onClick={() => onSelect(card.folder_path)}
-        onFocus={() => onSelect(card.folder_path)}
+        onClick={(event) => {
+          if (event.ctrlKey || event.metaKey) {
+            event.preventDefault()
+            onToggleSelection(card.folder_path)
+            return
+          }
+          onOpen(card.folder_path)
+        }}
       >
         <div className="mod-card-art">
           {card.image_url && imageState !== 'error' && (
@@ -620,45 +575,53 @@ function ModCardTile({
           <h3>{card.name}</h3>
         </div>
       </button>
-      <input
-        type="checkbox"
-        className="rotation-check"
-        checked={inPlaylist}
-        disabled={!card.entry_url}
-        aria-label={inPlaylist ? t('playlist.removeFrom') : t('playlist.addTo')}
-        title={inPlaylist ? t('playlist.removeFrom') : t('playlist.addTo')}
-        onChange={() => onToggle(card.folder_path)}
-      />
-      <span className="drag-grip" aria-hidden="true">
-        <DragGripIcon />
-      </span>
+      {card.entry_url && (
+        <button
+          type="button"
+          className={queuePosition ? 'queue-badge in' : 'queue-badge'}
+          aria-label={queuePosition ? t('playlist.removeFrom') : t('playlist.addTo')}
+          title={queuePosition ? t('playlist.removeFrom') : t('playlist.addTo')}
+          onClick={(event) => {
+            event.stopPropagation()
+            if (queuePosition) {
+              onRemoveFromRotation(card.folder_path)
+            } else {
+              onAddToRotation(card.folder_path)
+            }
+          }}
+        >
+          {queuePosition ?? '+'}
+        </button>
+      )}
     </div>
   )
 }
 
-const LIBRARY_PAGE_SIZE = 12
+const LIBRARY_PAGE_SIZE = 24
+
+
 
 function ModGrid({
   mods,
   selectedPath,
-  playlistPaths,
-  onSelect,
-  onToggle,
-  onReorder,
+  multiSelected,
+  queuePositions,
+  onOpen,
+  onToggleSelection,
+  onAddToRotation,
+  onRemoveFromRotation,
 }: {
   mods: ModCard[]
   selectedPath: string | null
-  playlistPaths: string[]
-  onSelect: (path: string) => void
-  onToggle: (path: string) => void
-  onReorder: (from: number, insertAt: number) => void
+  multiSelected: Set<string>
+  queuePositions: Map<string, number>
+  onOpen: (path: string) => void
+  onToggleSelection: (path: string) => void
+  onAddToRotation: (path: string) => void
+  onRemoveFromRotation: (path: string) => void
 }) {
   const { t } = useTranslation()
   const gridRef = useRef<HTMLDivElement>(null)
-  const dragIndexRef = useRef<number | null>(null)
-  const [dragIndex, setDragIndex] = useState<number | null>(null)
-  const [overIndex, setOverIndex] = useState<number | null>(null)
-  const [dropAfter, setDropAfter] = useState(false)
   const [page, setPage] = useState(0)
   const previousCount = useRef(mods.length)
   const pageCount = Math.max(1, Math.ceil(mods.length / LIBRARY_PAGE_SIZE))
@@ -676,26 +639,6 @@ function ModGrid({
     previousCount.current = mods.length
   }, [mods.length, page, pageCount])
 
-  function resetDrag() {
-    dragIndexRef.current = null
-    setDragIndex(null)
-    setOverIndex(null)
-  }
-
-  function handleDragStart(index: number) {
-    dragIndexRef.current = index
-    // Defer the faded class so Chromium does not snapshot it as the drag image.
-    requestAnimationFrame(() => setDragIndex(index))
-  }
-
-  function handleDrop(target: number, after: boolean) {
-    const from = dragIndexRef.current
-    if (from !== null) {
-      onReorder(from, target + (after ? 1 : 0))
-    }
-    resetDrag()
-  }
-
   function handleKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
     const grid = gridRef.current
     if (!grid) {
@@ -711,26 +654,17 @@ function ModGrid({
       return
     }
 
-    if (event.altKey) {
-      const delta = event.key === 'ArrowUp' ? -1 : event.key === 'ArrowDown' ? 1 : 0
-      if (delta === 0) {
-        return
-      }
-      // Reordering stays inside the visible page; crossing pages would move a
-      // card the user cannot see.
-      if ((delta < 0 && current === 0) || (delta > 0 && current === cards.length - 1)) {
-        return
-      }
+    if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault()
-      const path = visibleMods[current]?.folder_path
-      const global = pageStart + current
-      onReorder(global, delta < 0 ? global - 1 : global + 2)
-      requestAnimationFrame(() => {
-        const moved = Array.from(
-          gridRef.current?.querySelectorAll<HTMLButtonElement>('[data-mod-card]') ?? [],
-        ).find((node) => node.dataset.path === path)
-        moved?.focus()
-      })
+      const card = visibleMods[current]
+      if (!card) {
+        return
+      }
+      if (event.key === ' ') {
+        onToggleSelection(card.folder_path)
+      } else {
+        onOpen(card.folder_path)
+      }
       return
     }
 
@@ -757,30 +691,11 @@ function ModGrid({
     <>
       <div
         ref={gridRef}
-        className={dragIndex === null ? 'mod-grid' : 'mod-grid is-dragging'}
+        className="mod-grid"
         role="listbox"
         aria-label={t('library.title')}
         title={t('library.keyboardHint')}
         onKeyDown={handleKeyDown}
-        onDragOver={(event) => {
-          if (!isCardDrag(event.dataTransfer)) {
-            return
-          }
-          event.preventDefault()
-          event.dataTransfer.dropEffect = 'move'
-          setOverIndex(null)
-        }}
-        onDrop={(event) => {
-          if (!isCardDrag(event.dataTransfer)) {
-            return
-          }
-          event.preventDefault()
-          const from = dragIndexRef.current
-          if (from !== null) {
-            onReorder(from, pageStart + visibleMods.length)
-          }
-          resetDrag()
-        }}
       >
         {visibleMods.map((card, index) => (
           <ModCardTile
@@ -791,29 +706,12 @@ function ModGrid({
             tabbable={
               card.folder_path === selectedPath || (!selectedPath && index === 0)
             }
-            inPlaylist={playlistPaths.includes(card.folder_path)}
-            dragging={dragIndex === pageStart + index}
-            dropBefore={
-              dragIndex !== null &&
-              overIndex === pageStart + index &&
-              !dropAfter &&
-              dragIndex !== pageStart + index
-            }
-            dropAfter={
-              dragIndex !== null &&
-              overIndex === pageStart + index &&
-              dropAfter &&
-              dragIndex !== pageStart + index
-            }
-            onSelect={onSelect}
-            onToggle={onToggle}
-            onDragStart={handleDragStart}
-            onDragOver={(target, after) => {
-              setOverIndex(target)
-              setDropAfter(after)
-            }}
-            onDrop={handleDrop}
-            onDragEnd={resetDrag}
+            queuePosition={queuePositions.get(card.folder_path) ?? null}
+            multiSelected={multiSelected.has(card.folder_path)}
+            onOpen={onOpen}
+            onToggleSelection={onToggleSelection}
+            onAddToRotation={onAddToRotation}
+            onRemoveFromRotation={onRemoveFromRotation}
           />
         ))}
       </div>
@@ -844,23 +742,87 @@ function ModGrid({
   )
 }
 
-function SortList({
+function CloseIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M6 6l12 12M18 6L6 18" />
+    </svg>
+  )
+}
+
+function ChevronLeftIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M14.5 5.5L8 12l6.5 6.5" />
+    </svg>
+  )
+}
+
+function ChevronRightIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M9.5 5.5L16 12l-6.5 6.5" />
+    </svg>
+  )
+}
+
+function folderName(path: string) {
+  const parts = path.split(/[\\/]/)
+  return parts[parts.length - 1] || path
+}
+
+function RotationRail({
+  playlist,
   mods,
-  selectedPath,
-  onSelect,
-  onReorder,
+  collapsed,
+  onToggleCollapsed,
+  onToggleEnabled,
+  onSetInterval,
+  onSetRandom,
+  onSelectAll,
+  onClearAll,
+  onNext,
+  onMove,
+  onRemove,
+  onOpen,
 }: {
+  playlist: PlaylistSnapshot
   mods: ModCard[]
-  selectedPath: string | null
-  onSelect: (path: string) => void
-  onReorder: (from: number, insertAt: number) => void
+  collapsed: boolean
+  onToggleCollapsed: () => void
+  onToggleEnabled: () => void
+  onSetInterval: (seconds: number) => void
+  onSetRandom: (random: boolean) => void
+  onSelectAll: () => void
+  onClearAll: () => void
+  onNext: () => void
+  onMove: (from: number, insertAt: number) => void
+  onRemove: (path: string) => void
+  onOpen: (path: string) => void
 }) {
   const { t } = useTranslation()
-  const listRef = useRef<HTMLDivElement>(null)
+  const items = playlist.items
+  const cards = new Map(mods.map((card) => [card.folder_path, card]))
+  const missing = new Set(playlist.missing)
+  const initialInterval = splitInterval(playlist.intervalSeconds)
+  const [intervalMinutes, setIntervalMinutes] = useState(initialInterval.minutes)
+  const [intervalSeconds, setIntervalSeconds] = useState(initialInterval.seconds)
   const dragIndexRef = useRef<number | null>(null)
   const [dragIndex, setDragIndex] = useState<number | null>(null)
   const [overIndex, setOverIndex] = useState<number | null>(null)
   const [dropAfter, setDropAfter] = useState(false)
+
+  useEffect(() => {
+    const parts = splitInterval(playlist.intervalSeconds)
+    setIntervalMinutes(parts.minutes)
+    setIntervalSeconds(parts.seconds)
+  }, [playlist.intervalSeconds])
+
+  function commitInterval(minutes: number, seconds: number) {
+    const safeMinutes = Number.isFinite(minutes) ? Math.max(0, Math.floor(minutes)) : 0
+    const safeSeconds = Number.isFinite(seconds) ? Math.min(59, Math.max(0, Math.floor(seconds))) : 0
+    onSetInterval(safeMinutes * 60 + safeSeconds)
+  }
 
   function resetDrag() {
     dragIndexRef.current = null
@@ -869,15 +831,16 @@ function SortList({
   }
 
   function handleKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
-    const list = listRef.current
-    if (!list) {
+    const active = (document.activeElement as HTMLElement | null)?.closest<HTMLElement>(
+      '[data-queue-row]',
+    )
+    if (!active) {
       return
     }
-    const rows = Array.from(list.querySelectorAll<HTMLElement>('[data-sort-row]'))
-    const active = (document.activeElement as HTMLElement | null)?.closest<HTMLElement>(
-      '[data-sort-row]',
+    const rows = Array.from(
+      active.parentElement?.querySelectorAll<HTMLElement>('[data-queue-row]') ?? [],
     )
-    const current = active ? rows.indexOf(active) : -1
+    const current = rows.indexOf(active)
     if (current < 0) {
       return
     }
@@ -888,23 +851,14 @@ function SortList({
         return
       }
       event.preventDefault()
-      const path = mods[current]?.folder_path
-      onReorder(current, delta < 0 ? current - 1 : current + 2)
+      const key = items[current]
+      onMove(current, delta < 0 ? current - 1 : current + 2)
       requestAnimationFrame(() => {
         const moved = Array.from(
-          listRef.current?.querySelectorAll<HTMLElement>('[data-sort-row]') ?? [],
-        ).find((node) => node.dataset.path === path)
+          document.querySelectorAll<HTMLElement>('[data-queue-row]'),
+        ).find((node) => node.dataset.path === key)
         moved?.focus()
       })
-      return
-    }
-
-    if (event.key === 'Enter' || event.key === ' ') {
-      event.preventDefault()
-      const path = mods[current]?.folder_path
-      if (path) {
-        onSelect(path)
-      }
       return
     }
 
@@ -918,14 +872,156 @@ function SortList({
     rows[next]?.focus()
   }
 
+  if (collapsed) {
+    return (
+      <aside className="rotation-rail collapsed">
+        <button
+          type="button"
+          className="rail-expand"
+          onClick={onToggleCollapsed}
+          title={t('playlist.expand')}
+          aria-label={t('playlist.expand')}
+        >
+          <ChevronLeftIcon />
+          <span>{items.length}</span>
+        </button>
+      </aside>
+    )
+  }
+
+  const status = !playlist.enabled
+    ? t('playlist.status.inactive')
+    : items.length < 2
+      ? t('playlist.status.needTwo')
+      : playlist.missing.length > 0
+        ? t('playlist.status.missing', { count: playlist.missing.length })
+        : t('playlist.status.active', { count: items.length })
+
   return (
-    <div className="sort-view">
-      <p className="tiny sort-hint">{t('library.sortHint')}</p>
+    <aside className="rotation-rail" aria-label={t('playlist.panelTitle')}>
+      <header className="rail-head">
+        <div className="rail-title">
+          <h2>{t('playlist.panelTitle')}</h2>
+          <p className="tiny">{status}</p>
+        </div>
+        <div className="rail-head-actions">
+          <button
+            type="button"
+            className={
+              playlist.enabled && items.length > 0
+                ? 'switch interactive active'
+                : 'switch interactive'
+            }
+            role="switch"
+            aria-checked={playlist.enabled && items.length > 0}
+            aria-label={t('playlist.enable.title')}
+            disabled={items.length === 0}
+            onClick={onToggleEnabled}
+          >
+            <span />
+          </button>
+          <button
+            type="button"
+            className="icon-action"
+            onClick={onToggleCollapsed}
+            title={t('playlist.collapse')}
+            aria-label={t('playlist.collapse')}
+          >
+            <ChevronRightIcon />
+          </button>
+        </div>
+      </header>
+
+      <div className="rail-settings">
+        <div className="rail-field">
+          <span>{t('playlist.interval.title')}</span>
+          <div className="interval-inputs">
+            <input
+              type="number"
+              min={0}
+              step={1}
+              value={intervalMinutes}
+              aria-label={t('playlist.interval.unitMinutes')}
+              onChange={(event) => {
+                const next = Number(event.target.value)
+                setIntervalMinutes(next)
+                commitInterval(next, intervalSeconds)
+              }}
+            />
+            <span>{t('playlist.interval.unitMinutes')}</span>
+            <input
+              type="number"
+              min={0}
+              max={59}
+              step={1}
+              value={intervalSeconds}
+              aria-label={t('playlist.interval.unitSeconds')}
+              onChange={(event) => {
+                const next = Number(event.target.value)
+                setIntervalSeconds(next)
+                commitInterval(intervalMinutes, next)
+              }}
+            />
+            <span>{t('playlist.interval.unitSeconds')}</span>
+          </div>
+        </div>
+        <div className="rail-field">
+          <span>{t('playlist.order.title')}</span>
+          <div
+            className="segmented"
+            role="group"
+            aria-label={t('playlist.order.title')}
+            title={t('playlist.order.hint')}
+          >
+            <button
+              type="button"
+              className={playlist.random ? undefined : 'active'}
+              aria-pressed={!playlist.random}
+              onClick={() => onSetRandom(false)}
+            >
+              {t('playlist.order.queue')}
+            </button>
+            <button
+              type="button"
+              className={playlist.random ? 'active' : undefined}
+              aria-pressed={playlist.random}
+              onClick={() => onSetRandom(true)}
+            >
+              {t('playlist.order.random')}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="rail-actions">
+        <button type="button" className="button ghost" onClick={onSelectAll}>
+          <SelectAllIcon />
+          <span>{t('playlist.selectAll')}</span>
+        </button>
+        <button
+          type="button"
+          className="button ghost"
+          onClick={onClearAll}
+          disabled={items.length === 0}
+        >
+          <ClearAllIcon />
+          <span>{t('playlist.clearAll')}</span>
+        </button>
+        <button
+          type="button"
+          className="button ghost"
+          onClick={onNext}
+          disabled={items.length < 2}
+        >
+          <NextIcon />
+          <span>{t('playlist.next')}</span>
+        </button>
+      </div>
+
       <div
-        ref={listRef}
-        className="sort-list"
+        className="rail-queue"
         role="listbox"
-        aria-label={t('library.sortTitle')}
+        aria-label={t('playlist.queueTitle')}
         onKeyDown={handleKeyDown}
         onDragOver={(event) => {
           if (!isCardDrag(event.dataTransfer)) {
@@ -933,7 +1029,6 @@ function SortList({
           }
           event.preventDefault()
           event.dataTransfer.dropEffect = 'move'
-          setOverIndex(null)
         }}
         onDrop={(event) => {
           if (!isCardDrag(event.dataTransfer)) {
@@ -942,72 +1037,142 @@ function SortList({
           event.preventDefault()
           const from = dragIndexRef.current
           if (from !== null) {
-            onReorder(from, mods.length)
+            onMove(from, items.length)
           }
           resetDrag()
         }}
       >
-        {mods.map((card, index) => (
-          <div
-            key={card.folder_path}
-            data-sort-row
-            data-path={card.folder_path}
-            role="option"
-            aria-selected={card.folder_path === selectedPath}
-            tabIndex={card.folder_path === selectedPath || (!selectedPath && index === 0) ? 0 : -1}
-            className={[
-              'sort-row',
-              card.folder_path === selectedPath ? 'selected' : '',
-              dragIndex === index ? 'dragging' : '',
-              dragIndex !== null && overIndex === index && !dropAfter && dragIndex !== index
-                ? 'drop-before'
-                : '',
-              dragIndex !== null && overIndex === index && dropAfter && dragIndex !== index
-                ? 'drop-after'
-                : '',
-            ]
-              .filter(Boolean)
-              .join(' ')}
-            draggable
-            onClick={() => onSelect(card.folder_path)}
-            onDragStart={(event) => {
-              dragIndexRef.current = index
-              event.dataTransfer.setData(CARD_DRAG_MIME, card.folder_path)
-              event.dataTransfer.effectAllowed = 'move'
-              requestAnimationFrame(() => setDragIndex(index))
-            }}
-            onDragOver={(event) => {
-              if (!isCardDrag(event.dataTransfer)) {
-                return
-              }
-              event.preventDefault()
-              event.dataTransfer.dropEffect = 'move'
-              const rect = event.currentTarget.getBoundingClientRect()
-              setOverIndex(index)
-              setDropAfter(event.clientY > rect.top + rect.height / 2)
-            }}
-            onDrop={(event) => {
-              if (!isCardDrag(event.dataTransfer)) {
-                return
-              }
-              event.preventDefault()
-              const from = dragIndexRef.current
-              if (from !== null) {
+        {items.map((key, index) => {
+          const card = cards.get(key)
+          const isMissing = missing.has(key)
+          const rowClass = [
+            'queue-row',
+            playlist.current === key ? 'current' : '',
+            dragIndex === index ? 'dragging' : '',
+            dragIndex !== null && overIndex === index && !dropAfter && dragIndex !== index
+              ? 'drop-before'
+              : '',
+            dragIndex !== null && overIndex === index && dropAfter && dragIndex !== index
+              ? 'drop-after'
+              : '',
+          ]
+            .filter(Boolean)
+            .join(' ')
+          return (
+            <div
+              key={key}
+              data-queue-row
+              data-path={key}
+              role="option"
+              aria-selected={playlist.current === key}
+              tabIndex={card ? 0 : -1}
+              className={rowClass}
+              draggable
+              title={card?.name ?? key}
+              onClick={() => card && onOpen(key)}
+              onDragStart={(event) => {
+                dragIndexRef.current = index
+                event.dataTransfer.effectAllowed = 'move'
+                event.dataTransfer.setData(CARD_DRAG_MIME, key)
+                requestAnimationFrame(() => setDragIndex(index))
+              }}
+              onDragOver={(event) => {
+                if (!isCardDrag(event.dataTransfer)) {
+                  return
+                }
+                event.preventDefault()
+                event.stopPropagation()
+                event.dataTransfer.dropEffect = 'move'
                 const rect = event.currentTarget.getBoundingClientRect()
-                onReorder(from, index + (event.clientY > rect.top + rect.height / 2 ? 1 : 0))
-              }
-              resetDrag()
-            }}
-            onDragEnd={resetDrag}
-          >
-            <span className="sort-grip" aria-hidden="true">
-              ⠿
-            </span>
-            <span className="sort-index">{index + 1}</span>
-            <span className="sort-name">{card.name}</span>
-          </div>
-        ))}
+                setOverIndex(index)
+                setDropAfter(event.clientY > rect.top + rect.height / 2)
+              }}
+              onDrop={(event) => {
+                if (!isCardDrag(event.dataTransfer)) {
+                  return
+                }
+                event.preventDefault()
+                event.stopPropagation()
+                const from = dragIndexRef.current
+                if (from !== null) {
+                  const rect = event.currentTarget.getBoundingClientRect()
+                  onMove(from, index + (event.clientY > rect.top + rect.height / 2 ? 1 : 0))
+                }
+                resetDrag()
+              }}
+              onDragEnd={resetDrag}
+            >
+              <span className="queue-grip" aria-hidden="true">
+                <DragGripIcon />
+              </span>
+              <span className="queue-index">{index + 1}</span>
+              <span className="queue-name">{card?.name ?? folderName(key)}</span>
+              {isMissing && <span className="pill warn">{t('playlist.missingItem')}</span>}
+              <button
+                type="button"
+                className="icon-action danger queue-remove"
+                aria-label={t('playlist.removeFrom')}
+                title={t('playlist.removeFrom')}
+                onClick={(event) => {
+                  event.stopPropagation()
+                  onRemove(key)
+                }}
+              >
+                <CloseIcon />
+              </button>
+            </div>
+          )
+        })}
+        {items.length === 0 && <p className="tiny rail-empty">{t('playlist.queueEmpty')}</p>}
       </div>
+    </aside>
+  )
+}
+
+function DetailDrawer({
+  label,
+  onClose,
+  children,
+}: {
+  label: string
+  onClose: () => void
+  children: React.ReactNode
+}) {
+  const { t } = useTranslation()
+
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        onClose()
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [onClose])
+
+  return (
+    <div className="drawer-backdrop" onMouseDown={onClose}>
+      <aside
+        className="detail-drawer"
+        role="dialog"
+        aria-modal="true"
+        aria-label={label}
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <div className="drawer-top">
+          <span className="tiny">{t('library.detailTitle')}</span>
+          <button
+            type="button"
+            className="icon-action"
+            onClick={onClose}
+            aria-label={t('common.dismiss')}
+            title={t('common.dismiss')}
+          >
+            <CloseIcon />
+          </button>
+        </div>
+        {children}
+      </aside>
     </div>
   )
 }
@@ -1024,18 +1189,6 @@ function SkeletonGrid() {
           </div>
         </div>
       ))}
-    </div>
-  )
-}
-
-function DetailSkeleton() {
-  return (
-    <div className="panel mod-detail" aria-hidden="true">
-      <span className="skeleton skeleton-line skeleton-eyebrow" />
-      <span className="skeleton skeleton-line skeleton-heading" />
-      <span className="skeleton skeleton-line skeleton-body" />
-      <span className="skeleton skeleton-line skeleton-body short" />
-      <span className="skeleton skeleton-block" />
     </div>
   )
 }
@@ -1220,184 +1373,6 @@ function SettingsView({
   )
 }
 
-function PlaylistPanel({
-  playlist,
-  mods,
-  onToggleEnabled,
-  onSetInterval,
-  onSetRandom,
-  onSelectAll,
-  onClearAll,
-  onNext,
-}: {
-  playlist: PlaylistSnapshot
-  mods: ModCard[]
-  onToggleEnabled: () => void
-  onSetInterval: (seconds: number) => void
-  onSetRandom: (random: boolean) => void
-  onSelectAll: () => void
-  onClearAll: () => void
-  onNext: () => void
-}) {
-  const { t } = useTranslation()
-  const initialInterval = splitInterval(playlist.intervalSeconds)
-  const [intervalMinutes, setIntervalMinutes] = useState(initialInterval.minutes)
-  const [intervalSeconds, setIntervalSeconds] = useState(initialInterval.seconds)
-
-  useEffect(() => {
-    const parts = splitInterval(playlist.intervalSeconds)
-    setIntervalMinutes(parts.minutes)
-    setIntervalSeconds(parts.seconds)
-  }, [playlist.intervalSeconds])
-
-  if (mods.length === 0) {
-    return (
-      <section className="panel playlist-panel playlist-empty">
-        <p className="tiny">{t('playlist.emptyHint')}</p>
-      </section>
-    )
-  }
-
-  const items = playlist.items
-  const runnable = mods.filter((card) => card.entry_url)
-  const status = !playlist.enabled
-    ? t('playlist.status.inactive')
-    : items.length < 2
-      ? t('playlist.status.needTwo')
-      : playlist.missing.length > 0
-        ? t('playlist.status.missing', { count: playlist.missing.length })
-        : t('playlist.status.active', { count: items.length })
-
-  function commitInterval(minutes: number, seconds: number) {
-    const safeMinutes = Number.isFinite(minutes) ? Math.max(0, Math.floor(minutes)) : 0
-    const safeSeconds = Number.isFinite(seconds) ? Math.min(59, Math.max(0, Math.floor(seconds))) : 0
-    onSetInterval(safeMinutes * 60 + safeSeconds)
-  }
-
-  return (
-    <section className="panel playlist-panel" aria-label={t('playlist.panelTitle')}>
-      <div className="playlist-head">
-        <div>
-          <h2>{t('playlist.panelTitle')}</h2>
-          <p className="tiny">{status}</p>
-        </div>
-        <div className="setting-tail">
-          <button
-            type="button"
-            className={
-              playlist.enabled && items.length > 0
-                ? 'switch interactive active'
-                : 'switch interactive'
-            }
-            role="switch"
-            aria-checked={playlist.enabled && items.length > 0}
-            aria-label={t('playlist.enable.title')}
-            disabled={items.length === 0}
-            onClick={onToggleEnabled}
-          >
-            <span />
-          </button>
-        </div>
-      </div>
-
-      <div className="playlist-controls">
-        <div className="playlist-control">
-          <span>{t('playlist.interval.title')}</span>
-          <div className="interval-inputs">
-            <input
-              type="number"
-              min={0}
-              step={1}
-              value={intervalMinutes}
-              aria-label={t('playlist.interval.unitMinutes')}
-              onChange={(event) => {
-                const next = Number(event.target.value)
-                setIntervalMinutes(next)
-                commitInterval(next, intervalSeconds)
-              }}
-            />
-            <span>{t('playlist.interval.unitMinutes')}</span>
-            <input
-              type="number"
-              min={0}
-              max={59}
-              step={1}
-              value={intervalSeconds}
-              aria-label={t('playlist.interval.unitSeconds')}
-              onChange={(event) => {
-                const next = Number(event.target.value)
-                setIntervalSeconds(next)
-                commitInterval(intervalMinutes, next)
-              }}
-            />
-            <span>{t('playlist.interval.unitSeconds')}</span>
-          </div>
-        </div>
-
-        <div className="playlist-control">
-          <span>{t('playlist.order.title')}</span>
-          <div
-            className="segmented"
-            role="group"
-            aria-label={t('playlist.order.title')}
-            title={t('playlist.order.hint')}
-          >
-            <button
-              type="button"
-              className={playlist.random ? undefined : 'active'}
-              aria-pressed={!playlist.random}
-              onClick={() => onSetRandom(false)}
-            >
-              {t('playlist.order.library')}
-            </button>
-            <button
-              type="button"
-              className={playlist.random ? 'active' : undefined}
-              aria-pressed={playlist.random}
-              onClick={() => onSetRandom(true)}
-            >
-              {t('playlist.order.random')}
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <div className="playlist-footer">
-        <button
-          type="button"
-          className="button"
-          onClick={onSelectAll}
-          disabled={
-            runnable.length === 0 ||
-            runnable.every((card) => items.includes(card.folder_path))
-          }
-        >
-          <SelectAllIcon />
-          <span>{t('playlist.selectAll')}</span>
-        </button>
-        <button
-          type="button"
-          className="button"
-          onClick={onClearAll}
-          disabled={items.length === 0}
-        >
-          <ClearAllIcon />
-          <span>{t('playlist.clearAll')}</span>
-        </button>
-        <button
-          type="button"
-          className="button"
-          onClick={onNext}
-          disabled={items.length < 2}
-        >
-          <NextIcon />
-          <span>{t('playlist.next')}</span>
-        </button>
-      </div>
-    </section>
-  )
-}
-
 export default function App() {
   const { t } = useTranslation()
   const [tab, setTab] = useState<Tab>('library')
@@ -1413,7 +1388,8 @@ export default function App() {
     muteWallpapers: false,
   })
   const [library, setLibrary] = useState<LibrarySnapshot | null>(null)
-  const [libraryView, setLibraryView] = useState<'grid' | 'sort'>('grid')
+  const [selection, setSelection] = useState<Set<string>>(new Set())
+  const [railCollapsed, setRailCollapsed] = useState(false)
   const [selectedModPath, setSelectedModPath] = useState<string | null>(null)
   const [selectedMonitor, setSelectedMonitor] = useState('')
   const [installing, setInstalling] = useState<'mod' | 'folder' | 'image' | null>(null)
@@ -1448,10 +1424,12 @@ export default function App() {
       const key = event.key.toLowerCase()
       if (key === 'a') {
         event.preventDefault()
-        addAllWallpapers()
+        if (library) {
+          setSelection(new Set(library.mods.map((card) => card.folder_path)))
+        }
       } else if (key === 'd') {
         event.preventDefault()
-        clearPlaylist()
+        setSelection(new Set())
       }
     }
     window.addEventListener('keydown', onKeyDown)
@@ -1461,7 +1439,7 @@ export default function App() {
   useEffect(() => {
     function onDragStart(event: DragEvent) {
       const target = event.target
-      if (target instanceof Element && target.closest('.mod-card-wrap, .sort-row')) {
+      if (target instanceof Element && target.closest('.queue-row')) {
         return
       }
       event.preventDefault()
@@ -1561,19 +1539,13 @@ export default function App() {
         if (wasInstalling && snapshot.mods.length > baseline) {
           setNotice({ message: t('library.installDone'), tone: 'success' })
         }
-        setSelectedModPath((current) => {
-          if (current && snapshot.mods.some((mod) => mod.folder_path === current)) {
-            return current
-          }
-          // On first load, prefer the wallpaper that is actually on screen.
-          const activePath = snapshot.monitors
-            .map((monitor) => snapshot.selected[monitor])
-            .find((path): path is string => Boolean(path))
-          if (activePath && snapshot.mods.some((mod) => mod.folder_path === activePath)) {
-            return activePath
-          }
-          return snapshot.mods[0]?.folder_path ?? null
-        })
+        // The detail drawer only opens on an explicit card click. Keep it while
+        // its mod still exists and close it otherwise; never auto-open.
+        setSelectedModPath((current) =>
+          current && snapshot.mods.some((mod) => mod.folder_path === current)
+            ? current
+            : null,
+        )
         setSelectedMonitor((current) =>
           current && snapshot.monitors.includes(current)
             ? current
@@ -1714,21 +1686,52 @@ export default function App() {
     mutatePlaylist({ type: 'set-playlist-items', items }, { items })
   }
 
-  function reorderLibrary(from: number, insertAt: number) {
+  function moveQueueItem(from: number, insertAt: number) {
+    const next = moveBefore(playlist.items, from, insertAt)
+    if (next !== playlist.items) {
+      setPlaylistItems(next)
+    }
+  }
+
+  function removePlaylistItem(folderPath: string) {
+    setPlaylistItems(playlist.items.filter((item) => item !== folderPath))
+  }
+
+  function toggleSelection(folderPath: string) {
+    setSelection((current) => {
+      const next = new Set(current)
+      if (next.has(folderPath)) {
+        next.delete(folderPath)
+      } else {
+        next.add(folderPath)
+      }
+      return next
+    })
+  }
+
+  function addSelectionToPlaylist() {
     if (!library) {
       return
     }
-    const mods = moveBefore(library.mods, from, insertAt)
-    if (mods === library.mods) {
+    const runnable = new Set(
+      library.mods.filter((card) => card.entry_url).map((card) => card.folder_path),
+    )
+    const next = [...playlist.items]
+    for (const path of selection) {
+      if (runnable.has(path) && !next.includes(path)) {
+        next.push(path)
+      }
+    }
+    setPlaylistItems(next)
+    setSelection(new Set())
+  }
+
+  function removeSelectionFromPlaylist() {
+    if (selection.size === 0) {
       return
     }
-    setLibrary({ ...library, mods })
-    if (isHosted()) {
-      send({
-        type: 'set-library-order',
-        items: mods.map((card) => card.folder_path),
-      })
-    }
+    setPlaylistItems(playlist.items.filter((item) => !selection.has(item)))
+    setSelection(new Set())
   }
 
   function togglePlaylistItem(folderPath: string) {
@@ -1778,6 +1781,7 @@ export default function App() {
     }
   }
 
+  const queuePositions = new Map(playlist.items.map((path, index) => [path, index + 1]))
   const selectedCard = library?.mods.find((card) => card.folder_path === selectedModPath) ?? null
   const selectedOptions = selectedCard
     ? (library?.options[selectedCard.folder_path] ?? selectedCard.options)
@@ -1819,43 +1823,20 @@ export default function App() {
         <header className="page-header">
           <div>
             <h1>{tab === 'library' ? t('library.title') : t('settings.title')}</h1>
-            <p className="subhead">
-              {tab === 'library' ? t('library.subtitle') : t('settings.subtitle')}
-            </p>
-            {tab === 'library' && (
-              <>
-                {library && (
-                  <p className="library-meta">
-                    {t('library.stats', {
-                      mods: library.mods.length,
-                      monitors: library.monitors.length,
-                    })}
-                  </p>
-                )}
-                <p className="drop-hint">{t('library.dropHint')}</p>
-              </>
+            {tab === 'settings' && (
+              <p className="subhead">{t('settings.subtitle')}</p>
+            )}
+            {tab === 'library' && library && (
+              <p className="library-meta">
+                {t('library.stats', {
+                  mods: library.mods.length,
+                  monitors: library.monitors.length,
+                })}
+              </p>
             )}
           </div>
           {tab === 'library' && (
           <div className="header-actions">
-            <div className="segmented view-switch" role="group" aria-label={t('library.view.label')}>
-              <button
-                type="button"
-                className={libraryView === 'grid' ? 'active' : ''}
-                aria-pressed={libraryView === 'grid'}
-                onClick={() => setLibraryView('grid')}
-              >
-                {t('library.view.grid')}
-              </button>
-              <button
-                type="button"
-                className={libraryView === 'sort' ? 'active' : ''}
-                aria-pressed={libraryView === 'sort'}
-                onClick={() => setLibraryView('sort')}
-              >
-                {t('library.view.sort')}
-              </button>
-            </div>
             <button
               className="button"
               onClick={installImage}
@@ -1919,27 +1900,66 @@ export default function App() {
         {tab === 'library' ? (
           <section className="library-page" aria-busy={loadingLibrary}>
             {loadingLibrary ? (
-              <>
-                <div className="library-top">
-                  <DetailSkeleton />
-                  <DetailSkeleton />
-                </div>
-                <SkeletonGrid />
-              </>
+              <SkeletonGrid />
             ) : library && library.mods.length > 0 ? (
               <>
-                <div className="library-top">
-                  <PlaylistPanel
+                <div className="library-workspace">
+                  <div className="library-main">
+                    <ModGrid
+                      mods={library.mods}
+                      selectedPath={selectedModPath}
+                      multiSelected={selection}
+                      queuePositions={queuePositions}
+                      onOpen={setSelectedModPath}
+                      onToggleSelection={toggleSelection}
+                      onAddToRotation={togglePlaylistItem}
+                      onRemoveFromRotation={removePlaylistItem}
+                    />
+                    {library.errors.length > 0 && (
+                      <p className="warn-text">{library.errors.join(' · ')}</p>
+                    )}
+                  </div>
+                  <RotationRail
                     playlist={playlist}
                     mods={library.mods}
+                    collapsed={railCollapsed}
+                    onToggleCollapsed={() => setRailCollapsed((value) => !value)}
                     onToggleEnabled={togglePlaylistEnabled}
                     onSetInterval={setPlaylistInterval}
                     onSetRandom={setPlaylistRandom}
                     onSelectAll={addAllWallpapers}
                     onClearAll={clearPlaylist}
                     onNext={playlistNext}
+                    onMove={moveQueueItem}
+                    onRemove={removePlaylistItem}
+                    onOpen={setSelectedModPath}
                   />
-                  {selectedCard ? (
+                </div>
+                {selection.size > 0 && (
+                  <div className="selection-bar" role="toolbar" aria-label={t('library.selectionTitle')}>
+                    <span className="selection-count">
+                      {t('library.selectedCount', { count: selection.size })}
+                    </span>
+                    <button type="button" className="button" onClick={addSelectionToPlaylist}>
+                      {t('playlist.addTo')}
+                    </button>
+                    <button type="button" className="button ghost" onClick={removeSelectionFromPlaylist}>
+                      {t('playlist.removeFrom')}
+                    </button>
+                    <button
+                      type="button"
+                      className="button ghost"
+                      onClick={() => setSelection(new Set())}
+                    >
+                      {t('library.clearSelection')}
+                    </button>
+                  </div>
+                )}
+                {selectedCard && (
+                  <DetailDrawer
+                    label={selectedCard.name}
+                    onClose={() => setSelectedModPath(null)}
+                  >
                     <ModDetail
                       card={selectedCard}
                       options={selectedOptions}
@@ -1955,31 +1975,7 @@ export default function App() {
                         changeOption(selectedCard.folder_path, id, value)
                       }
                     />
-                  ) : (
-                    <div className="panel mod-detail detail-empty">
-                      <p className="tiny">{t('library.detailEmpty')}</p>
-                    </div>
-                  )}
-                </div>
-                {libraryView === 'sort' ? (
-                  <SortList
-                    mods={library.mods}
-                    selectedPath={selectedModPath}
-                    onSelect={setSelectedModPath}
-                    onReorder={reorderLibrary}
-                  />
-                ) : (
-                  <ModGrid
-                    mods={library.mods}
-                    selectedPath={selectedModPath}
-                    playlistPaths={playlist.items}
-                    onSelect={setSelectedModPath}
-                    onToggle={togglePlaylistItem}
-                    onReorder={reorderLibrary}
-                  />
-                )}
-                {library.errors.length > 0 && (
-                  <p className="warn-text">{library.errors.join(' · ')}</p>
+                  </DetailDrawer>
                 )}
               </>
             ) : (

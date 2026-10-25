@@ -12,7 +12,7 @@
 | `cargo clippy -p octos-protocol -p octos-core -p octos-storage --all-targets -- -D warnings` | 通过 |
 | `npm --prefix ui run typecheck` | 通过 |
 | `npm --prefix ui run build` | 通过 |
-| `cargo xtask deploy`（cargo xwin release + UI + 部署） | 通过，`E:\file\octos\octos.exe` |
+| `cargo xtask deploy`（cargo xwin release + UI + 部署） | 通过，`E:\file\octos\octocaris.exe` |
 
 > `cargo clippy --workspace` 在 Linux 宿主仍无法运行：`rfd` 引入的 `wayland-sys` 需要 pkg-config，`windows-future` 不能为宿主目标编译。Windows 侧以 `cargo xwin build --workspace` 为准。
 
@@ -22,10 +22,10 @@
 
 | 命令 | 结果 | 证据 |
 |---|---|---|
-| `octos.exe reload` | 重新加载 1 个壁纸 WebView | 日志 `cli reload: 1 wallpaper(s)`，18:23:13Z |
-| `octos.exe dev-tools` | 延迟 1s 后打开 1 个壁纸 DevTools | 日志 `opened DevTools on 1 wallpaper(s)`，18:23:18Z |
-| `octos.exe run E:\file\octos\cli-fixtures\run-test-mod --dev-tools` | 复制到 wallpapers、设为所有显示器、保存 prefs、打开 DevTools | 日志 18:24:03Z；`data\wallpapers\run-test-mod`；`preferences.json` 的 `selected.DISPLAY1` 指向该目录；`wallpaper controller ready -> https://local.octos/run-test-mod/index.html` |
-| `octos.exe new E:\file\octos\cli-new-test` | 创建 `octos.json`（name/entry）和 `index.html` | 文件实测存在；成功 MessageBox 弹出 |
+| `octocaris.exe reload` | 重新加载 1 个壁纸 WebView | 日志 `cli reload: 1 wallpaper(s)`，18:23:13Z |
+| `octocaris.exe dev-tools` | 延迟 1s 后打开 1 个壁纸 DevTools | 日志 `opened DevTools on 1 wallpaper(s)`，18:23:18Z |
+| `octocaris.exe run E:\file\octos\cli-fixtures\run-test-mod --dev-tools` | 复制到 wallpapers、设为所有显示器、保存 prefs、打开 DevTools | 日志 18:24:03Z；`data\wallpapers\run-test-mod`；`preferences.json` 的 `selected.DISPLAY1` 指向该目录；`wallpaper controller ready -> https://local.octos/run-test-mod/index.html` |
+| `octocaris.exe new E:\file\octos\cli-new-test` | 创建 `octos.json`（name/entry）和 `index.html` | 文件实测存在；成功 MessageBox 弹出 |
 | 无参数第二实例 | 只恢复主窗口，不转发命令 | 代码路径 `args.len() <= 1 -> restore_existing_instance` |
 
 补充：

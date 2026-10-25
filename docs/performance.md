@@ -1,7 +1,7 @@
 # 性能与省电
 
 日期：2026-10-23
-环境：单屏 DISPLAY2 2880×1800 @ 200%，壁纸 L2D（4K 资源）或静态图片。测量方式：`Get-Process` 采样 10 秒 CPU 时间，按单核百分比归一化；包含 `octos.exe` 及所有 `--webview-exe-name=octos.exe` 的 `msedgewebview2.exe` 子进程。
+环境：单屏 DISPLAY2 2880×1800 @ 200%，壁纸 L2D（4K 资源）或静态图片。测量方式：`Get-Process` 采样 10 秒 CPU 时间，按单核百分比归一化；包含 `octocaris.exe` 及所有 `--webview-exe-name=octocaris.exe` 的 `msedgewebview2.exe` 子进程。
 
 ## 基线
 
@@ -12,7 +12,7 @@
 | L2D，15 FPS | **32.5%** | 更省电，适合常驻 |
 | 静态图片壁纸（30 FPS 设置不生效） | **14.1%** | 几乎只有宿主/合成基线 |
 | L2D + 全屏应用遮挡 | **13.4%** | 壁纸 `SetIsVisible(false)` 后动画停止 |
-| `octos.exe` 本体（watchdog 等） | **~0.5%** | 不是主要成本 |
+| `octocaris.exe` 本体（watchdog 等） | **~0.5%** | 不是主要成本 |
 
 内存：L2D 场景约 1.1 GB（其中 GPU 进程约 530–630 MB，L2D renderer 约 130–240 MB）；静态图片场景明显更低。
 
@@ -29,7 +29,7 @@
 
 - 全屏检测不再每 500ms 枚举全部窗口：前台窗口变化时立即检查，另有 2 秒兜底。
 - Chrome 覆盖层 click-through 改为 controller 就绪时立即执行 + 2 秒兜底。
-- `octos.exe` 本体空闲 CPU 约 0.5%，主要成本仍在 WebView2 渲染进程。
+- `octocaris.exe` 本体空闲 CPU 约 0.5%，主要成本仍在 WebView2 渲染进程。
 
 ### 3. 已有的隐藏/全屏暂停
 
@@ -69,7 +69,7 @@
 ## 2026-10-24 终测：图片/L2D、全屏、息屏
 
 环境：Windows 11，单屏 `DISPLAY2` 2880×1800 @200%，`maxFps = 30`，轮换关闭。
-方法：10 秒采样 `octos.exe` + 所有带 `--webview-exe-name=octos.exe` 的 `msedgewebview2.exe` 的 `TotalProcessorTime` 增量，按单核归一化；内存为这些进程 WorkingSet 之和。
+方法：10 秒采样 `octocaris.exe` + 所有带 `--webview-exe-name=octocaris.exe` 的 `msedgewebview2.exe` 的 `TotalProcessorTime` 增量，按单核归一化；内存为这些进程 WorkingSet 之和。
 
 | 场景 | 单核 CPU | 内存 | 说明 |
 |---|---:|---:|---|
@@ -137,9 +137,9 @@
 
 CPU 持平（填充率增加被更少的缩放开销抵消），内存增加约 120 MB，主要是更大的画布/纹理。细节与验证见 `docs/upstream-map.md` §4.6。
 
-## 2026-10-24 壁纸库分页与整体静音
+## 2026-10-24 壁纸库分页、轮换队列与整体静音
 
 - **问题**：壁纸库一次渲染全部 45 个卡片，其中 37 个是 `preview.gif` 动图，WebView2 GPU 进程占用偏高，界面滚动/交互发沉。
-- **分页**：壁纸库网格每页 12 个卡片，底部「上一页 / 下一页 + 第 X / Y 页」；同一时间最多 12 个动图预览。分页只影响展示：拖拽排序、Alt+↑/↓、Ctrl+A/Ctrl+D 和轮换顺序仍基于完整库顺序；导入的新壁纸会自动跳到最后一页。
-- **排序与分页的冲突**：网格分页后，页内拖拽不能跨页搬动。顶部新增「网格 / 排序」切换，排序视图用完整顺序的紧凑文字列表（45 行、无动图预览，几乎没有渲染成本），支持跨整库拖拽和 Alt+↑/↓；排完切回网格即可。
+- **分页**：壁纸库网格每页 24 个卡片、卡片放大，底部「上一页 / 下一页 + 第 X / Y 页」；同一时间最多 24 个动图预览。分页只影响浏览，不再承担排序。
+- **顺序解耦**：轮换顺序改由右侧队列栏自身维护（连续的队列列表，不分页）。壁纸库只负责收藏和加入队列，因此“分页 vs 排序”的冲突从结构上消失；`libraryOrder` 不再参与轮换。
 - **整体静音**：设置页开关 + 托盘「静音壁纸」菜单项，调用 WebView2 `ICoreWebView2_8::SetIsMuted`，对已存在的壁纸页立即生效，新建的 controller 在导航前就带上静音标志。实测日志：`wallpaper audio muted at creation: true`（含 `IsMuted` 回读）。

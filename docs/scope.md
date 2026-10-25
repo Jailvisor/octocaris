@@ -31,7 +31,7 @@
 
 ## 日常启动
 
-- 直接双击 `E:\file\octos\octos.exe`。
+- 直接双击 `E:\file\octos\octocaris.exe`。
 - 数据目录优先：`OCTOS_DATA_DIR` → 便携目录 `<exe>\data`（存在 `data\wallpapers` 时）→ `%LOCALAPPDATA%\Octos`。
 - 当前 `E:\file\octos\data` 会被自动识别，不需要设置环境变量。
 - 壁纸库、选项、显示器选择保存在 `E:\file\octos\data\preferences.json`。

@@ -90,6 +90,11 @@ fn run(paths: Paths) -> Result<()> {
     if instance.already_running {
         let command_line = octos_win::current_command_line();
         let args = octos_win::split_command_line(&command_line);
+        if args.iter().skip(1).any(|arg| arg == "--startup") {
+            // Login start while another instance is already running: stay quiet.
+            info!("startup launch ignored; Octocaris is already running");
+            return Ok(());
+        }
         if args.len() <= 1 {
             info!("another Octocaris instance is running; asking it to show its window");
             if !octos_win::restore_existing_instance() {
@@ -105,6 +110,7 @@ fn run(paths: Paths) -> Result<()> {
     }
 
     let args = octos_win::split_command_line(&octos_win::current_command_line());
+    let start_hidden = args.iter().skip(1).any(|arg| arg == "--startup");
     let startup_command = cli::parse(args.get(1..).unwrap_or(&[]));
 
     let mut preferences = octos_storage::load_preferences(&paths.preferences);
@@ -142,8 +148,10 @@ fn run(paths: Paths) -> Result<()> {
     }
     let _com = ComGuard;
 
-    let hwnd = octos_win::create_main_window(saved_window)?;
-    if let Some(icon) = octos_win::load_app_icon(&paths.exe_dir.join("octocaris.ico")) {
+    let hwnd = octos_win::create_main_window(saved_window, start_hidden)?;
+    if let Some(icon) = octos_win::load_app_icon(&paths.exe_dir.join("octocaris.ico"))
+        .or_else(octos_win::load_embedded_app_icon)
+    {
         octos_win::set_window_icon(hwnd, icon);
     }
     octos_win::add_tray_icon(hwnd).context("could not add tray icon")?;
@@ -171,8 +179,14 @@ fn run(paths: Paths) -> Result<()> {
     let command_paths = paths.clone();
     octos_win::set_command_handler(move |line| {
         let args = octos_win::split_command_line(line);
-        if let Some(command) = cli::parse(args.get(1..).unwrap_or(&[])) {
-            dispatch_cli(command, &command_paths);
+        if args.iter().skip(1).any(|arg| arg == "--startup") {
+            return;
+        }
+        match cli::parse(args.get(1..).unwrap_or(&[])) {
+            Some(command) => dispatch_cli(command, &command_paths),
+            // A plain second launch opens the window, even when the first one
+            // started hidden at login.
+            None => octos_win::restore_main_window(),
         }
     });
     let lite_paths = paths.clone();
@@ -1310,13 +1324,13 @@ fn playlist_snapshot(mods: &[catalog::ModCard]) -> serde_json::Value {
         });
     };
     let playlist = &preferences.playlist;
-    let grid: Vec<String> = mods
+    let present: std::collections::HashSet<String> = mods
         .iter()
         .filter(|card| card.entry_url.is_some())
         .map(|card| card.folder_path.to_string_lossy().to_string())
         .collect();
-    let items = octos_core::playlist::members_in_order(&playlist.items, &grid);
-    let present: std::collections::HashSet<&str> = grid.iter().map(String::as_str).collect();
+    // The queue owns the rotation order; the library has no ordering role.
+    let items = playlist.items.clone();
     let missing: Vec<&String> = items
         .iter()
         .filter(|key| !present.contains(key.as_str()))

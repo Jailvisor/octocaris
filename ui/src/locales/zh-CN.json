@@ -15,7 +15,6 @@
   },
   "library": {
     "title": "壁纸库",
-    "subtitle": "浏览、安装并配置你的壁纸。",
     "emptyTitle": "还没有壁纸",
     "emptyBody": "安装一个 .zip 壁纸，或选择一个已安装的 mod 并设为壁纸。",
     "emptyHint": "安装或选择一个 mod 开始。",
@@ -32,13 +31,12 @@
     "installing": "安装中…",
     "importFolder": "导入文件夹",
     "importFolderHint": "把一个已解压的壁纸文件夹复制到壁纸库。",
-    "dropHint": "也可以把壁纸文件夹或 .zip 直接拖进窗口。",
     "dropTitle": "松开以导入壁纸",
     "dropBody": "支持文件夹和 .zip 文件",
     "installDone": "安装完成，壁纸库已更新。",
     "stats": "{{mods}} 个壁纸 · {{monitors}} 台显示器",
     "inUse": "使用中",
-    "keyboardHint": "方向键浏览壁纸，Alt+↑/↓ 调整顺序，拖动卡片也可以排序",
+    "keyboardHint": "方向键浏览，Enter 查看详情，Ctrl+点击多选，Ctrl+A 全选，Ctrl+D 清除选择",
     "addImage": "添加图片",
     "addImageHint": "把 PNG、JPEG、WebP、GIF 或 BMP 图片直接作为壁纸。",
     "confirm": "卸载",
@@ -62,13 +60,10 @@
       "next": "下一页",
       "status": "第 {{current}} / {{total}} 页"
     },
-    "view": {
-      "label": "视图",
-      "grid": "网格",
-      "sort": "排序"
-    },
-    "sortHint": "拖动行调整顺序，Alt+↑/↓ 微调，Enter 查看详情",
-    "sortTitle": "排序视图"
+    "selectedCount": "已选 {{count}} 个",
+    "clearSelection": "清除选择",
+    "selectionTitle": "批量操作",
+    "detailTitle": "壁纸详情"
   },
   "settings": {
     "title": "设置",
@@ -92,7 +87,7 @@
     },
     "startWithWindows": {
       "title": "开机启动",
-      "desc": "在 HKCU Run 中注册应用。"
+      "desc": "登录 Windows 时自动启动，只显示托盘图标，不弹出主窗口。"
     },
     "memorySaver": {
       "title": "内存节省",
@@ -144,8 +139,14 @@
       "title": "播放顺序",
       "library": "壁纸库顺序",
       "random": "随机",
-      "hint": "壁纸库顺序：按网格顺序轮换；随机：每次随机挑选，不连续重复"
+      "hint": "队列顺序：按右侧队列从上到下轮换；随机：每次随机挑选，不连续重复",
+      "queue": "队列顺序"
     },
-    "clearAll": "全取消"
+    "clearAll": "全取消",
+    "queueTitle": "轮换队列",
+    "queueEmpty": "队列为空，点击壁纸卡片上的 + 加入",
+    "missingItem": "缺失",
+    "collapse": "收起队列",
+    "expand": "展开队列"
   }
 }

@@ -8,7 +8,7 @@ Octos 现在可以直接把图片作为壁纸，不需要手工写 `octos.json`/
 
 1. **Library 顶栏“添加图片”**：打开文件选择器。
 2. **拖拽**：把图片文件拖进主窗口。
-3. **CLI**：`octos.exe run path\to\image.png`（会复制到 wallpapers 并应用到所有显示器）。
+3. **CLI**：`octocaris.exe run path\to\image.png`（会复制到 wallpapers 并应用到所有显示器）。
 
 ## 支持格式
 

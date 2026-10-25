@@ -85,8 +85,8 @@ fn deploy() -> Result<()> {
         .join("target")
         .join(TARGET)
         .join("release")
-        .join("octos.exe");
-    std::fs::copy(&exe, deploy_dir.join("octos.exe"))
+        .join("octocaris.exe");
+    std::fs::copy(&exe, deploy_dir.join("octocaris.exe"))
         .with_context(|| format!("could not copy {}", exe.display()))?;
 
     let ui_dist = root.join("ui").join("dist");
@@ -118,7 +118,7 @@ fn smoke() -> Result<()> {
     run(Command::new("powershell.exe").args([
         "-NoProfile",
         "-Command",
-        "Start-Process 'E:\\file\\octos\\octos.exe'",
+        "Start-Process 'E:\\file\\octos\\octocaris.exe'",
     ]))
 }
 

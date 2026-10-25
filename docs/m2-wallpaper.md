@@ -14,7 +14,7 @@
 
 我们不需要换成“全屏应用”方案，也不需要另找一套壁纸软件的做法。之前的“像全屏应用”是**挂载层级和全屏误判**导致的 bug。
 
-> **`octos-spike` 已退役**：它是 M0 工具链/Composition 验证程序，使用 WorkerW-first 挂载，没有 Chrome 覆盖层穿透、全屏/可见性门控、多显示器。Windows 产品验收只用 `octos.exe`。差异表见下。
+> **`octos-spike` 已退役**：它是 M0 工具链/Composition 验证程序，使用 WorkerW-first 挂载，没有 Chrome 覆盖层穿透、全屏/可见性门控、多显示器。Windows 产品验收只用 `octocaris.exe`。差异表见下。
 
 ## Spike vs production
 
@@ -178,6 +178,7 @@ SetLayeredWindowAttributes(hwnd, COLORREF(0), 255, LWA_ALPHA);
 - 按显示器设置/清除：后端只有 `show_all`/`clear_all`，UI 还没有按显示器选择。
 - 桌面图标 API 已接入 App UI；壁纸侧 `System.setDesktopIconVisibility` 的 JS 协议封装仍属于 M3。
 - 桌面图标 API 是**临时 ShowWindow**，不写 `HideIcons`（与上游一致）；不会持久化用户设置。
+- Win10 在挂载壁纸后（Progman `0x052C`）会把 `SHELLDLL_DefView` 移到顶层 `WorkerW` 下；查找图标列表先查 Progman，失败后遍历 WorkerW，再找名为 `FolderView` 的 `SysListView32`（与上游 `GetSysListViewHwnd` 一致）。
 - 鼠标：只转发鼠标，不转发键盘；指针从壁纸移动到其他窗口时没有合成 button-up。
 - watchdog 每 500ms 都 `SetWindowPos`，后续应只在 rect/z-order 变化时调整。
 

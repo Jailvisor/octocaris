@@ -295,7 +295,7 @@ fn apply_title_bar_theme(hwnd: HWND) {
     flush_menu_themes();
 }
 
-pub fn create_main_window(saved: Option<WindowPlacement>) -> Result<HWND> {
+pub fn create_main_window(saved: Option<WindowPlacement>, start_hidden: bool) -> Result<HWND> {
     unsafe {
         let hinstance = GetModuleHandleW(None)?;
         let cursor = LoadCursorW(None, IDC_ARROW)?;
@@ -405,8 +405,12 @@ pub fn create_main_window(saved: Option<WindowPlacement>) -> Result<HWND> {
             state.taskbar_created = taskbar_created;
         });
 
-        let _ = ShowWindow(hwnd, SW_SHOW);
-        info!("main window created: {hwnd:?}");
+        if start_hidden {
+            info!("main window created hidden for startup: {hwnd:?}");
+        } else {
+            let _ = ShowWindow(hwnd, SW_SHOW);
+            info!("main window created: {hwnd:?}");
+        }
         Ok(hwnd)
     }
 }
@@ -608,6 +612,24 @@ pub fn load_app_icon(path: &std::path::Path) -> Option<HICON> {
             0,
             0,
             LR_LOADFROMFILE | LR_DEFAULTSIZE,
+        )
+    }
+    .ok()?;
+    Some(HICON(handle.0))
+}
+
+/// Icon embedded in the executable resources by `scripts/embed-icon.py`.
+pub fn load_embedded_app_icon() -> Option<HICON> {
+    let module = unsafe { GetModuleHandleW(None) }.ok()?;
+    let instance = windows::Win32::Foundation::HINSTANCE::from(module);
+    let handle = unsafe {
+        LoadImageW(
+            Some(instance),
+            PCWSTR::from_raw(std::ptr::without_provenance(1)),
+            IMAGE_ICON,
+            0,
+            0,
+            LR_DEFAULTSIZE,
         )
     }
     .ok()?;

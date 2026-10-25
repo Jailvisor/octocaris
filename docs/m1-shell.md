@@ -20,14 +20,14 @@ M1 目标是把 M0 的 spike 变成一个可持续开发的 Rust workspace + 可
 ```bash
 cd /home/lzt/codehub/rust/octos/octos-rs
 cargo xtask deploy
-powershell.exe -NoProfile -Command "\$env:OCTOS_DATA_DIR='E:\file\octos\data'; Start-Process 'E:\file\octos\octos.exe'"
+powershell.exe -NoProfile -Command "\$env:OCTOS_DATA_DIR='E:\file\octos\data'; Start-Process 'E:\file\octos\octocaris.exe'"
 ```
 
 部署目录：
 
 ```
 E:\file\octos\
-├── octos.exe
+├── octocaris.exe
 ├── app\              # React 构建产物
 ├── data\             # OCTOS_DATA_DIR（日志、WebView2 缓存）
 └── (wallpapers\ 由后续 milestone 生成)
@@ -71,7 +71,7 @@ octos-rs/
 ├── crates/octos-storage    # OCTOS_DATA_DIR / LOCALAPPDATA 路径
 ├── crates/octos-webview    # WebView2 环境 + 主窗口 controller + 虚拟主机
 ├── crates/octos-win        # 主窗口、托盘、单实例
-├── crates/octos-app        # bin octos.exe
+├── crates/octos-app        # bin octocaris.exe
 ├── ui/                     # React 19 + TS + Vite
 └── xtask/                  # build-ui / build / deploy / smoke
 ```

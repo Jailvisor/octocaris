@@ -16,9 +16,30 @@ fn find_icon_list() -> Result<HWND> {
     unsafe {
         let progman =
             FindWindowW(w!("Progman"), PCWSTR::null()).context("Progman is not available")?;
-        let shell = FindWindowExW(Some(progman), None, w!("SHELLDLL_DefView"), PCWSTR::null())
-            .context("SHELLDLL_DefView is not available")?;
-        FindWindowExW(Some(shell), None, w!("SysListView32"), PCWSTR::null())
+        let mut shell =
+            FindWindowExW(Some(progman), None, w!("SHELLDLL_DefView"), PCWSTR::null()).ok();
+
+        // Windows 10 moves SHELLDLL_DefView under a top-level WorkerW once the
+        // wallpaper is attached (Progman 0x052C). Windows 11 keeps it under
+        // Progman. Mirror the original app and fall back to the WorkerW chain.
+        if shell.is_none() {
+            let mut after: Option<HWND> = None;
+            loop {
+                let Ok(worker) = FindWindowExW(None, after, w!("WorkerW"), PCWSTR::null()) else {
+                    break;
+                };
+                if let Ok(found) =
+                    FindWindowExW(Some(worker), None, w!("SHELLDLL_DefView"), PCWSTR::null())
+                {
+                    shell = Some(found);
+                    break;
+                }
+                after = Some(worker);
+            }
+        }
+
+        let shell = shell.context("SHELLDLL_DefView is not available")?;
+        FindWindowExW(Some(shell), None, w!("SysListView32"), w!("FolderView"))
             .context("SysListView32 is not available")
     }
 }

@@ -15,7 +15,6 @@
   },
   "library": {
     "title": "Library",
-    "subtitle": "Browse, install and configure your wallpapers.",
     "emptyTitle": "No wallpapers yet",
     "emptyBody": "Install a .zip wallpaper, or pick an installed mod and set it as your wallpaper.",
     "emptyHint": "Install or pick a mod to get started.",
@@ -32,13 +31,12 @@
     "installing": "Installing…",
     "importFolder": "Import folder",
     "importFolderHint": "Copy an unpacked wallpaper folder into the library.",
-    "dropHint": "You can also drop a wallpaper folder or .zip onto this window.",
     "dropTitle": "Drop to import wallpaper",
     "dropBody": "Folders and .zip files are supported",
     "installDone": "Installed. The library has been updated.",
     "stats": "{{mods}} wallpapers · {{monitors}} displays",
     "inUse": "In use",
-    "keyboardHint": "Arrow keys browse wallpapers; Alt+Up/Down or dragging reorders them",
+    "keyboardHint": "Arrow keys to browse, Enter for details, Ctrl+click to multi-select, Ctrl+A select all, Ctrl+D clear",
     "addImage": "Add image",
     "addImageHint": "Use a PNG, JPEG, WebP, GIF or BMP file as a wallpaper.",
     "confirm": "Remove",
@@ -62,13 +60,10 @@
       "next": "Next",
       "status": "Page {{current}} of {{total}}"
     },
-    "view": {
-      "label": "View",
-      "grid": "Grid",
-      "sort": "Sort"
-    },
-    "sortHint": "Drag rows to reorder, Alt+↑/↓ to nudge, Enter to open details",
-    "sortTitle": "Sort view"
+    "selectedCount": "{{count}} selected",
+    "clearSelection": "Clear selection",
+    "selectionTitle": "Bulk actions",
+    "detailTitle": "Wallpaper details"
   },
   "settings": {
     "title": "Settings",
@@ -92,7 +87,7 @@
     },
     "startWithWindows": {
       "title": "Start with Windows",
-      "desc": "Register the app in HKCU Run."
+      "desc": "Starts at sign-in with only a tray icon; the main window stays hidden."
     },
     "memorySaver": {
       "title": "Memory saver",
@@ -144,8 +139,14 @@
       "title": "Order",
       "library": "Library order",
       "random": "Random",
-      "hint": "Library order follows the grid; Random picks a different wallpaper each time"
+      "hint": "Queue order follows the list on the right; random never repeats back to back.",
+      "queue": "Queue order"
     },
-    "clearAll": "Clear all"
+    "clearAll": "Clear all",
+    "queueTitle": "Rotation queue",
+    "queueEmpty": "Queue is empty. Use the + button on a wallpaper card to add it.",
+    "missingItem": "Missing",
+    "collapse": "Collapse queue",
+    "expand": "Expand queue"
   }
 }
