@@ -31,10 +31,12 @@ use windows::Win32::Foundation::{
 };
 use windows::Win32::Graphics::Dwm::{DWMWA_CLOAKED, DwmGetWindowAttribute};
 use windows::Win32::Graphics::Gdi::{
-    EnumDisplayMonitors, GetMonitorInfoW, HDC, HMONITOR, MONITORINFOEXW, ScreenToClient,
+    EnumDisplayMonitors, GetMonitorInfoW, HDC, HMONITOR, MONITOR_DEFAULTTONEAREST, MONITORINFOEXW,
+    MonitorFromRect, ScreenToClient,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::System::Registry::{HKEY_CURRENT_USER, RRF_RT_REG_DWORD, RegGetValueW};
+use windows::Win32::UI::HiDpi::{GetDpiForMonitor, MDT_EFFECTIVE_DPI};
 use windows::Win32::UI::WindowsAndMessaging::*;
 use windows::core::{BOOL, Interface, PCWSTR, PWSTR, w};
 
@@ -72,6 +74,8 @@ struct MonitorSlot {
     applied_visible: Option<bool>,
     /// Last client size passed to the WebView controller.
     applied_client: Option<(i32, i32)>,
+    /// Monitor DPI used when the current controller was created.
+    applied_dpi: u32,
 }
 
 impl MonitorSlot {
@@ -91,6 +95,7 @@ impl MonitorSlot {
             recreate_after: None,
             applied_visible: None,
             applied_client: None,
+            applied_dpi: 0,
         }
     }
 
@@ -102,6 +107,7 @@ impl MonitorSlot {
         self.recreate_after = None;
         self.applied_visible = None;
         self.applied_client = None;
+        self.applied_dpi = 0;
     }
 
     fn close(&mut self) {
@@ -763,6 +769,21 @@ impl WallpaperState {
         let parent = self.slots[index].parent;
         let insert_after = self.slots[index].insert_after;
 
+        // Scaling can be changed in Windows while the app runs. The controller
+        // captured the old DPI, so recreate it; WebView2 then picks up the new
+        // device scale factor and the zoom is recomputed at creation.
+        let dpi = monitor_dpi(rect);
+        let stale_dpi = self.slots[index].webview.is_some()
+            && self.slots[index].applied_dpi != 0
+            && self.slots[index].applied_dpi != dpi;
+        if stale_dpi {
+            info!(
+                "wallpaper DPI changed for {}: {} -> {}; recreating WebView",
+                self.slots[index].device_name, self.slots[index].applied_dpi, dpi
+            );
+            self.slots[index].close_webview();
+        }
+
         // Re-running SetWindowPos every watchdog tick re-composites a layered
         // window and shows up as a flash. Only touch it when geometry or the
         // z-order sibling actually changed.
@@ -840,6 +861,7 @@ impl WallpaperState {
             .ok_or_else(|| anyhow!("no wallpaper entry URL"))?;
         let device_name = self.slots[index].device_name.clone();
         let wallpapers_dir = self.wallpapers_dir.clone();
+        let dpi = monitor_dpi(self.slots[index].rect);
         let created_url = entry_url.clone();
         let message_device = device_name.clone();
         let loaded_device = device_name.clone();
@@ -854,6 +876,7 @@ impl WallpaperState {
             device_name.clone(),
             self.fps_cap,
             self.muted,
+            dpi,
             move |webview, text| {
                 handle_wallpaper_message(&message_device, hwnd, webview, text);
             },
@@ -886,6 +909,7 @@ impl WallpaperState {
                             slot.webview = Some(webview);
                             slot.creating = false;
                             slot.recreate_after = None;
+                            slot.applied_dpi = dpi;
                             // A rotation may have pointed the slot at another
                             // mod while this controller was being created; the
                             // in-flight navigation still targets the old URL.
@@ -1210,6 +1234,24 @@ unsafe extern "system" fn enum_workerw(hwnd: HWND, lparam: LPARAM) -> BOOL {
         return false.into();
     }
     true.into()
+}
+
+/// Effective DPI of the monitor that contains `rect`.
+///
+/// `GetDpiForWindow` is unreliable for the wallpaper window: it is a child of
+/// Progman/WorkerW (an Explorer window with its own DPI context), so it can
+/// report the primary monitor's DPI even after moving to a mixed-DPI monitor.
+fn monitor_dpi(rect: RECT) -> u32 {
+    unsafe {
+        let monitor = MonitorFromRect(&rect, MONITOR_DEFAULTTONEAREST);
+        let mut x = 96u32;
+        let mut y = 96u32;
+        if GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, &mut x, &mut y).is_ok() && x >= 96 {
+            x
+        } else {
+            96
+        }
+    }
 }
 
 fn position_wallpaper(

@@ -27,7 +27,6 @@ use windows::Win32::Graphics::DirectComposition::{
     DCompositionCreateDevice, IDCompositionDevice, IDCompositionTarget, IDCompositionVisual,
 };
 use windows::Win32::Graphics::Dxgi::IDXGIDevice;
-use windows::Win32::UI::HiDpi::GetDpiForWindow;
 use windows::Win32::UI::WindowsAndMessaging::GetClientRect;
 use windows::core::{BOOL, IUnknown, Interface, PCWSTR, PWSTR, w};
 
@@ -412,6 +411,7 @@ impl CompositionDevice {
         monitor_id: String,
         fps_cap: u32,
         muted: bool,
+        dpi: u32,
         mut on_message: impl FnMut(&ICoreWebView2, &str) + 'static,
         mut on_loaded: impl FnMut(&ICoreWebView2) + 'static,
         mut on_process_failed: impl FnMut(&ICoreWebView2, COREWEBVIEW2_PROCESS_FAILED_KIND) + 'static,
@@ -471,7 +471,9 @@ impl CompositionDevice {
                         // wallpapers size their canvas from innerWidth/innerHeight
                         // and ignore devicePixelRatio, so at 200% scaling they
                         // would otherwise render at half resolution and look soft.
-                        let dpi = GetDpiForWindow(hwnd);
+                        // `dpi` comes from the monitor, not GetDpiForWindow: the
+                        // wallpaper window is a child of Progman and can report
+                        // the primary monitor's DPI on mixed-DPI setups.
                         let zoom = if dpi > 96 { 96.0 / f64::from(dpi) } else { 1.0 };
                         let _ = controller.SetZoomFactor(zoom);
                         info!("wallpaper DPI {dpi} -> page zoom {zoom}");

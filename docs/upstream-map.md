@@ -121,6 +121,7 @@
 - **最终方案**：`SetZoomFactor(96 / dpi)`（192 DPI 时为 **0.5**），让壁纸页的 CSS 视口等于物理像素：`innerWidth=2880, innerHeight=1800, devicePixelRatio=1`。页面按 2880×1800 建画布，1:1 上屏；与 Wallpaper Engine 的渲染方式一致。
 - **验证**：日志 `wallpaper DPI 192 -> page zoom 0.5`；页面 `hello` 上报 `{"w":2880,"h":1800,"dpr":1}`；点击物理 `(400,400)` 时页面收到 `clientX=400, clientY=400`，`SendMouseInput` 映射无偏移。Momoi（30 FPS）CPU 26.9%（改前 27.8%），内存 1563 MB（改前 1444 MB，多出的是更大的画布纹理）。
 - **代价/限制**：壁纸页 1 CSS px = 1 物理 px，固定像素布局的 HTML 面板会比以前小一半（WE 同样如此）；运行中修改 DPI/缩放要等 controller 重建后才生效，`WM_DPICHANGED` 的处理后续可补。
+- **混合 DPI（2026-10-25）**：`GetDpiForWindow` 对挂在 Progman/WorkerW 下的壁纸子窗口不可靠，会返回主屏 DPI。实测 3840×2160@150% 的副屏拿到 192（主屏）→ zoom 0.5、页面视口 5120×2880、`devicePixelRatio 0.75`，画面虽 1:1 但布局偏大。改为按 slot 的显示器矩形调用 `GetDpiForMonitor(MDT_EFFECTIVE_DPI)` 后：副屏 144 → zoom 0.6667，页面视口 3840×2160、dpr 1；主屏 192 → zoom 0.5，视口 2880×1800、dpr 1。鼠标物理坐标映射同时验证正确（副屏物理 (3880,800) → 页面 (1000,800)）。
 
 ### 4.7 `GetParent` 诊断误用
 
