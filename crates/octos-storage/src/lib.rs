@@ -12,6 +12,8 @@
 //! `OCTOS_DATA_DIR` overrides the root so tests never touch real user data.
 
 pub mod atomic;
+pub mod community;
+pub mod hash;
 pub mod image;
 pub mod install;
 pub mod prefs;
@@ -19,8 +21,17 @@ pub mod template;
 pub mod thumbnail;
 
 pub use atomic::write_atomic;
+pub use community::{
+    IndexCacheMeta, cleanup_community, download_file_name, download_path, load_index_cache,
+    part_path, preview_cache_name, preview_cache_path, previews_dir, read_marker,
+    store_index_cache,
+};
+pub use hash::{HashError, sha256_bytes, sha256_file, verify_file};
 pub use image::{install_image, is_image_file};
-pub use install::{InstallError, cleanup_staging, install_folder, install_zip, remove_mod};
+pub use install::{
+    InstallError, InstallMode, StagedInstall, cleanup_staging, install_folder, install_zip,
+    install_zip_named, recover_interrupted_install, remove_mod, replace_zip_named,
+};
 pub use prefs::{PrefsWriter, load_preferences, save_preferences};
 pub use template::create_mod_template;
 pub use thumbnail::{ensure_all, ensure_thumbnail, has_thumbnail, thumbnail_path, write_thumbnail};
@@ -49,6 +60,8 @@ pub struct Paths {
     pub webview_data: PathBuf,
     /// Versioned user preferences (`selected`, `modOptions`, ...).
     pub preferences: PathBuf,
+    /// Community catalog cache and partial downloads.
+    pub community: PathBuf,
     /// Directory containing the executable.
     pub exe_dir: PathBuf,
 }
@@ -81,6 +94,7 @@ impl Paths {
             logs: root.join("logs"),
             webview_data: root.join("webview2"),
             preferences: root.join("preferences.json"),
+            community: root.join("community"),
             exe_dir,
             root,
         };
@@ -94,9 +108,16 @@ impl Paths {
     }
 
     pub fn ensure(&self) -> Result<(), PathsError> {
-        for directory in [&self.root, &self.wallpapers, &self.logs, &self.webview_data] {
+        for directory in [
+            &self.root,
+            &self.wallpapers,
+            &self.logs,
+            &self.webview_data,
+            &self.community,
+        ] {
             std::fs::create_dir_all(directory)?;
         }
+        std::fs::create_dir_all(self.community.join("previews"))?;
         Ok(())
     }
 }
@@ -115,6 +136,7 @@ mod tests {
             logs: root.join("logs"),
             webview_data: root.join("webview2"),
             preferences: root.join("preferences.json"),
+            community: root.join("community"),
             exe_dir: PathBuf::from(r"C:\tmp"),
             root,
         };

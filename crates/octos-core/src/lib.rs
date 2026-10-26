@@ -14,6 +14,8 @@ pub mod manifest;
 
 pub mod catalog;
 
+pub mod community;
+
 pub mod cli;
 
 pub mod frame_cap;
@@ -29,3 +31,5 @@ pub mod storage_scope;
 pub mod playlist;
 
 pub mod prefs;
+
+pub mod web_defaults;

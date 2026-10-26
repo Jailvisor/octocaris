@@ -8,7 +8,9 @@ rust-version.workspace = true
 [dependencies]
 octos-core = { path = "../octos-core" }
 image.workspace = true
+serde.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 zip.workspace = true

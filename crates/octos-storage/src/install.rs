@@ -9,7 +9,9 @@
 use std::fs::{self, File};
 use std::io::{self};
 use std::path::{Component, Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 
+use octos_core::community::validate_folder_name;
 use thiserror::Error;
 use zip::ZipArchive;
 
@@ -33,6 +35,12 @@ pub enum InstallError {
     TooLarge,
     #[error("zip is empty")]
     Empty,
+    #[error("install was cancelled")]
+    Cancelled,
+    #[error("cannot replace {0}: a file is still in use")]
+    Locked(PathBuf),
+    #[error("could not restore {0} after a failed replace")]
+    RestoreFailed(PathBuf),
     #[error("refusing to remove a path outside the wallpapers directory: {0}")]
     UnsafeRemove(PathBuf),
     #[error("not a directory: {0}")]
@@ -56,6 +64,7 @@ pub enum InstallError {
 pub fn install_zip(zip_path: &Path, wallpapers_root: &Path) -> Result<PathBuf, InstallError> {
     fs::create_dir_all(wallpapers_root)?;
     cleanup_staging(wallpapers_root);
+    recover_interrupted_install(wallpapers_root);
 
     let stem = zip_path
         .file_stem()
@@ -66,19 +75,18 @@ pub fn install_zip(zip_path: &Path, wallpapers_root: &Path) -> Result<PathBuf, I
         return Err(InstallError::InvalidFolderName(stem));
     }
 
-    let staging = wallpapers_root.join(format!(
-        ".octos-install-{}-{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|duration| duration.as_nanos())
-            .unwrap_or_default()
-    ));
-    let _ = fs::remove_dir_all(&staging);
-    fs::create_dir_all(&staging)?;
-
-    let result = extract_into(&staging, zip_path)
-        .and_then(|()| finalize_install(&staging, wallpapers_root, &stem));
+    let staging = create_staging(wallpapers_root, ".octos-install")?;
+    let result = (|| {
+        extract_into(&staging, zip_path)?;
+        let payload = prepare_payload(&staging)?;
+        // Community zips are named after the release asset; the marker carries
+        // the real install folder so a manual import lands in the right place.
+        let folder = read_marker_folder(&payload).unwrap_or(stem);
+        if !valid_folder_name(&folder) {
+            return Err(InstallError::InvalidFolderName(folder));
+        }
+        swap_into_place(&payload, wallpapers_root, &folder, InstallMode::Replace)
+    })();
 
     if result.is_err() {
         let _ = fs::remove_dir_all(&staging);
@@ -95,6 +103,7 @@ pub fn install_zip(zip_path: &Path, wallpapers_root: &Path) -> Result<PathBuf, I
 /// lives inside the wallpapers directory is treated as already installed.
 pub fn install_folder(source: &Path, wallpapers_root: &Path) -> Result<PathBuf, InstallError> {
     fs::create_dir_all(wallpapers_root)?;
+    recover_interrupted_install(wallpapers_root);
     let source = source.canonicalize()?;
     if !source.is_dir() {
         return Err(InstallError::NotADirectory(source));
@@ -198,6 +207,14 @@ fn is_link(metadata: &fs::Metadata) -> bool {
 }
 
 fn extract_into(staging: &Path, zip_path: &Path) -> Result<(), InstallError> {
+    extract_into_cancellable(staging, zip_path, None)
+}
+
+fn extract_into_cancellable(
+    staging: &Path,
+    zip_path: &Path,
+    cancel: Option<&AtomicBool>,
+) -> Result<(), InstallError> {
     let file = File::open(zip_path)?;
     let mut archive = ZipArchive::new(file)?;
     if archive.is_empty() {
@@ -209,6 +226,9 @@ fn extract_into(staging: &Path, zip_path: &Path) -> Result<(), InstallError> {
 
     let mut total = 0u64;
     for index in 0..archive.len() {
+        if cancel.is_some_and(|flag| flag.load(Ordering::Relaxed)) {
+            return Err(InstallError::Cancelled);
+        }
         let mut entry = archive.by_index(index)?;
         let raw_name = entry.name()?.into_owned();
         let relative = entry
@@ -255,6 +275,152 @@ fn finalize_install(
     wallpapers_root: &Path,
     stem: &str,
 ) -> Result<PathBuf, InstallError> {
+    let payload = prepare_payload(staging)?;
+    let destination = swap_into_place(&payload, wallpapers_root, stem, InstallMode::Replace);
+    if payload != staging && destination.is_ok() {
+        let _ = fs::remove_dir_all(staging);
+    }
+    destination
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InstallMode {
+    /// Refuse to touch an existing folder.
+    Fresh,
+    /// Swap in the new payload, keeping a backup until the rename succeeds.
+    Replace,
+}
+
+/// A zip that has been extracted, validated and flattened but not yet moved into
+/// the wallpapers directory. Extraction runs on a worker thread; `commit` is a
+/// fast rename that must run on the UI thread.
+#[derive(Debug)]
+pub struct StagedInstall {
+    staging: PathBuf,
+    payload: PathBuf,
+}
+
+impl StagedInstall {
+    pub fn stage(
+        zip_path: &Path,
+        wallpapers_root: &Path,
+        folder: &str,
+        cancel: &AtomicBool,
+    ) -> Result<Self, InstallError> {
+        if !valid_folder_name(folder) {
+            return Err(InstallError::InvalidFolderName(folder.to_string()));
+        }
+        fs::create_dir_all(wallpapers_root)?;
+        cleanup_staging(wallpapers_root);
+        recover_interrupted_install(wallpapers_root);
+        let staging = create_staging(wallpapers_root, ".octos-install")?;
+        let result = (|| {
+            extract_into_cancellable(&staging, zip_path, Some(cancel))?;
+            let payload = prepare_payload(&staging)?;
+            Ok(Self {
+                staging: staging.clone(),
+                payload,
+            })
+        })();
+        if result.is_err() {
+            let _ = fs::remove_dir_all(&staging);
+        }
+        result
+    }
+
+    pub fn payload(&self) -> &Path {
+        &self.payload
+    }
+
+    pub fn write_marker(
+        &self,
+        marker: &octos_core::community::InstalledCommunity,
+    ) -> io::Result<()> {
+        crate::community::write_marker(&self.payload, marker)
+    }
+
+    pub fn commit(
+        self,
+        wallpapers_root: &Path,
+        folder: &str,
+        mode: InstallMode,
+    ) -> Result<PathBuf, InstallError> {
+        if !valid_folder_name(folder) {
+            return Err(InstallError::InvalidFolderName(folder.to_string()));
+        }
+        swap_into_place(&self.payload, wallpapers_root, folder, mode)
+    }
+
+    pub fn discard(self) {
+        let _ = fs::remove_dir_all(&self.staging);
+    }
+}
+
+impl Drop for StagedInstall {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.staging);
+    }
+}
+
+pub fn install_zip_named(
+    zip_path: &Path,
+    wallpapers_root: &Path,
+    folder: &str,
+) -> Result<PathBuf, InstallError> {
+    let cancel = AtomicBool::new(false);
+    StagedInstall::stage(zip_path, wallpapers_root, folder, &cancel)?.commit(
+        wallpapers_root,
+        folder,
+        InstallMode::Fresh,
+    )
+}
+
+pub fn replace_zip_named(
+    zip_path: &Path,
+    wallpapers_root: &Path,
+    folder: &str,
+) -> Result<PathBuf, InstallError> {
+    let cancel = AtomicBool::new(false);
+    StagedInstall::stage(zip_path, wallpapers_root, folder, &cancel)?.commit(
+        wallpapers_root,
+        folder,
+        InstallMode::Replace,
+    )
+}
+
+/// Restore backups left behind when a replace was interrupted mid-swap.
+pub fn recover_interrupted_install(wallpapers_root: &Path) -> usize {
+    let Ok(entries) = fs::read_dir(wallpapers_root) else {
+        return 0;
+    };
+    let mut recovered = 0;
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().to_string();
+        if !name.starts_with(".octos-backup-") || !entry.path().is_dir() {
+            continue;
+        }
+        let backup = entry.path();
+        let Ok(folder) = fs::read_to_string(backup.join("target")) else {
+            continue;
+        };
+        let folder = folder.trim().to_string();
+        let destination = wallpapers_root.join(&folder);
+        let payload = backup.join("payload");
+        if !valid_folder_name(&folder) {
+            let _ = fs::remove_dir_all(&backup);
+            continue;
+        }
+        if !destination.exists() && payload.exists() && fs::rename(&payload, &destination).is_ok() {
+            recovered += 1;
+        }
+        if destination.exists() || !payload.exists() {
+            let _ = fs::remove_dir_all(&backup);
+        }
+    }
+    recovered
+}
+
+fn prepare_payload(staging: &Path) -> Result<PathBuf, InstallError> {
     let entries: Vec<PathBuf> = fs::read_dir(staging)?
         .flatten()
         .map(|entry| entry.path())
@@ -262,7 +428,6 @@ fn finalize_install(
     if entries.is_empty() {
         return Err(InstallError::Empty);
     }
-
     let source = if entries.len() == 1 && entries[0].is_dir() {
         entries[0].clone()
     } else {
@@ -271,16 +436,68 @@ fn finalize_install(
     if !has_manifest(&source) && !convert_wallpaper_engine(&source)? {
         return Err(InstallError::NotAMod(source));
     }
+    Ok(source)
+}
 
-    let destination = wallpapers_root.join(stem);
+fn swap_into_place(
+    payload: &Path,
+    wallpapers_root: &Path,
+    folder: &str,
+    mode: InstallMode,
+) -> Result<PathBuf, InstallError> {
+    let destination = wallpapers_root.join(folder);
     if destination.exists() {
-        fs::remove_dir_all(&destination)?;
+        if mode == InstallMode::Fresh {
+            return Err(InstallError::AlreadyInstalled(destination));
+        }
+        let backup = wallpapers_root.join(format!(
+            ".octos-backup-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|duration| duration.as_nanos())
+                .unwrap_or_default()
+        ));
+        fs::create_dir_all(&backup)?;
+        let saved = backup.join("payload");
+        fs::write(backup.join("target"), folder)?;
+        if fs::rename(&destination, &saved).is_err() {
+            let _ = fs::remove_dir_all(&backup);
+            return Err(InstallError::Locked(destination));
+        }
+        if let Err(error) = fs::rename(payload, &destination) {
+            let restored = fs::rename(&saved, &destination).is_ok();
+            let _ = fs::remove_dir_all(&backup);
+            return Err(if restored {
+                InstallError::Io(error)
+            } else {
+                InstallError::RestoreFailed(destination)
+            });
+        }
+        let _ = fs::remove_dir_all(&backup);
+        return Ok(destination);
     }
-    fs::rename(&source, &destination)?;
-    if source != staging {
-        let _ = fs::remove_dir_all(staging);
-    }
+    fs::rename(payload, &destination)?;
     Ok(destination)
+}
+
+fn read_marker_folder(payload: &Path) -> Option<String> {
+    let marker = crate::community::read_marker(payload)?;
+    valid_folder_name(&marker.folder).then_some(marker.folder)
+}
+
+fn create_staging(wallpapers_root: &Path, prefix: &str) -> Result<PathBuf, InstallError> {
+    let staging = wallpapers_root.join(format!(
+        "{prefix}-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|duration| duration.as_nanos())
+            .unwrap_or_default()
+    ));
+    let _ = fs::remove_dir_all(&staging);
+    fs::create_dir_all(&staging)?;
+    Ok(staging)
 }
 
 enum WorkshopProject {
@@ -374,7 +591,9 @@ pub fn cleanup_staging(wallpapers_root: &Path) -> usize {
     let mut removed = 0;
     for entry in entries.flatten() {
         let name = entry.file_name().to_string_lossy().to_string();
-        if (name.starts_with(".octos-install-") || name.starts_with(".octos-image-"))
+        if (name.starts_with(".octos-install-")
+            || name.starts_with(".octos-import-")
+            || name.starts_with(".octos-image-"))
             && entry.path().is_dir()
             && fs::remove_dir_all(entry.path()).is_ok()
         {
@@ -397,44 +616,7 @@ fn safe_relative(path: &Path) -> bool {
 }
 
 fn valid_folder_name(name: &str) -> bool {
-    if name.is_empty() || name == "." || name == ".." || name.ends_with([' ', '.']) {
-        return false;
-    }
-    if name.chars().any(|character| {
-        character.is_control()
-            || matches!(
-                character,
-                '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*'
-            )
-    }) {
-        return false;
-    }
-    let upper = name.to_ascii_uppercase();
-    !matches!(
-        upper.as_str(),
-        "CON"
-            | "PRN"
-            | "AUX"
-            | "NUL"
-            | "COM1"
-            | "COM2"
-            | "COM3"
-            | "COM4"
-            | "COM5"
-            | "COM6"
-            | "COM7"
-            | "COM8"
-            | "COM9"
-            | "LPT1"
-            | "LPT2"
-            | "LPT3"
-            | "LPT4"
-            | "LPT5"
-            | "LPT6"
-            | "LPT7"
-            | "LPT8"
-            | "LPT9"
-    )
+    validate_folder_name(name)
 }
 
 /// Remove an installed mod, but only when it is inside `wallpapers_root`.
@@ -706,5 +888,143 @@ mod tests {
         let error = remove_mod(&wallpapers, &outside).unwrap_err();
         assert!(matches!(error, InstallError::UnsafeRemove(_)));
         assert!(outside.exists());
+    }
+
+    fn staging_dirs(root: &Path) -> Vec<String> {
+        fs::read_dir(root)
+            .map(|entries| {
+                entries
+                    .flatten()
+                    .map(|entry| entry.file_name().to_string_lossy().to_string())
+                    .filter(|name| name.starts_with(".octos-install-"))
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    #[test]
+    fn zip_install_keeps_octos_defaults() {
+        let temp = tempdir().unwrap();
+        let zip_path = temp.path().join("demo.zip");
+        write_zip(
+            &zip_path,
+            &[
+                ("demo/octos.json", r#"{"name":"Demo"}"#),
+                ("demo/index.html", "<!doctype html>"),
+                (
+                    "demo/octos-defaults.json",
+                    r#"{"schemaVersion":1,"mode":"force","storage":{"k":{"bgmVolume":0}}}"#,
+                ),
+            ],
+        )
+        .unwrap();
+        let wallpapers = temp.path().join("wallpapers");
+        let installed = install_zip(&zip_path, &wallpapers).unwrap();
+        assert!(installed.join("octos-defaults.json").is_file());
+    }
+
+    #[test]
+    fn named_install_uses_the_explicit_folder() {
+        let temp = tempdir().unwrap();
+        let zip_path = temp.path().join("octocaris-we-demo-v1.0.0.zip");
+        write_zip(
+            &zip_path,
+            &[
+                ("demo/octos.json", r#"{"name":"Demo"}"#),
+                ("demo/index.html", "<!doctype html>"),
+            ],
+        )
+        .unwrap();
+        let wallpapers = temp.path().join("wallpapers");
+        let installed = install_zip_named(&zip_path, &wallpapers, "demo").unwrap();
+        assert_eq!(installed, wallpapers.join("demo"));
+        assert!(installed.join("index.html").is_file());
+
+        let error = install_zip_named(&zip_path, &wallpapers, "demo").unwrap_err();
+        assert!(matches!(error, InstallError::AlreadyInstalled(_)));
+    }
+
+    #[test]
+    fn zip_install_honours_the_community_marker_folder() {
+        let temp = tempdir().unwrap();
+        let zip_path = temp.path().join("octocaris-we-1-v1.0.0.zip");
+        write_zip(
+            &zip_path,
+            &[
+                ("wrapper/octos.json", r#"{"name":"Demo"}"#),
+                ("wrapper/index.html", "<!doctype html>"),
+                (
+                    "wrapper/octos-community.json",
+                    r#"{"id":"we-demo","folder":"real-folder","version":"1.0.0","sha256":"aa","installedAt":1}"#,
+                ),
+            ],
+        )
+        .unwrap();
+        let wallpapers = temp.path().join("wallpapers");
+        let installed = install_zip(&zip_path, &wallpapers).unwrap();
+        assert_eq!(installed, wallpapers.join("real-folder"));
+    }
+
+    #[test]
+    fn replace_swaps_content_and_clears_the_backup() {
+        let temp = tempdir().unwrap();
+        let wallpapers = temp.path().join("wallpapers");
+        fs::create_dir_all(wallpapers.join("demo")).unwrap();
+        fs::write(wallpapers.join("demo/index.html"), "old").unwrap();
+        fs::write(wallpapers.join("demo/octos.json"), r#"{"name":"Old"}"#).unwrap();
+
+        let zip_path = temp.path().join("demo.zip");
+        write_zip(
+            &zip_path,
+            &[
+                ("demo/octos.json", r#"{"name":"New"}"#),
+                ("demo/index.html", "new"),
+            ],
+        )
+        .unwrap();
+        let installed = replace_zip_named(&zip_path, &wallpapers, "demo").unwrap();
+        assert_eq!(
+            fs::read_to_string(installed.join("index.html")).unwrap(),
+            "new"
+        );
+        assert!(!fs::read_dir(&wallpapers).unwrap().flatten().any(|entry| {
+            entry
+                .file_name()
+                .to_string_lossy()
+                .starts_with(".octos-backup-")
+        }));
+    }
+
+    #[test]
+    fn recovers_an_interrupted_replace() {
+        let temp = tempdir().unwrap();
+        let wallpapers = temp.path().join("wallpapers");
+        let backup = wallpapers.join(".octos-backup-1-1");
+        fs::create_dir_all(backup.join("payload")).unwrap();
+        fs::write(backup.join("target"), "demo").unwrap();
+        fs::write(backup.join("payload/octos.json"), r#"{"name":"Demo"}"#).unwrap();
+
+        assert_eq!(recover_interrupted_install(&wallpapers), 1);
+        assert!(wallpapers.join("demo/octos.json").is_file());
+        assert!(!backup.exists());
+    }
+
+    #[test]
+    fn cancelling_extraction_leaves_no_staging() {
+        let temp = tempdir().unwrap();
+        let zip_path = temp.path().join("demo.zip");
+        write_zip(
+            &zip_path,
+            &[
+                ("demo/octos.json", r#"{"name":"Demo"}"#),
+                ("demo/index.html", "<!doctype html>"),
+            ],
+        )
+        .unwrap();
+        let wallpapers = temp.path().join("wallpapers");
+        let cancel = AtomicBool::new(true);
+        let error = StagedInstall::stage(&zip_path, &wallpapers, "demo", &cancel).unwrap_err();
+        assert!(matches!(error, InstallError::Cancelled));
+        assert!(staging_dirs(&wallpapers).is_empty());
     }
 }

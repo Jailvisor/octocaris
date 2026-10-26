@@ -5,16 +5,19 @@ import {
   isHosted,
   send,
   subscribe,
+  type CommunitySnapshot,
   type LibrarySnapshot,
   type ModCard,
   type PlaylistSnapshot,
   type SettingsSnapshot,
   type OptionSpec,
 } from './bridge'
+import { CommunityView } from './Community'
+import { DetailDrawer } from './DetailDrawer'
 import { setLanguage, type AppLanguage } from './i18n'
 import logoUrl from './assets/octocaris.svg'
 
-type Tab = 'library' | 'settings'
+type Tab = 'library' | 'community' | 'settings'
 type NoticeTone = 'error' | 'success' | 'info'
 type Notice = { message: string; tone: NoticeTone }
 
@@ -85,6 +88,17 @@ function SettingsIcon() {
     <svg viewBox="0 0 24 24" aria-hidden="true">
       <circle cx="12" cy="12" r="3" />
       <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+    </svg>
+  )
+}
+
+function CommunityIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="12" cy="12" r="9" />
+      <path d="M3 12h18" />
+      <path d="M12 3c3 3.2 3 14.8 0 18" />
+      <path d="M12 3c-3 3.2-3 14.8 0 18" />
     </svg>
   )
 }
@@ -1129,54 +1143,6 @@ function RotationRail({
   )
 }
 
-function DetailDrawer({
-  label,
-  onClose,
-  children,
-}: {
-  label: string
-  onClose: () => void
-  children: React.ReactNode
-}) {
-  const { t } = useTranslation()
-
-  useEffect(() => {
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape') {
-        onClose()
-      }
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [onClose])
-
-  return (
-    <div className="drawer-backdrop" onMouseDown={onClose}>
-      <aside
-        className="detail-drawer"
-        role="dialog"
-        aria-modal="true"
-        aria-label={label}
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <div className="drawer-top">
-          <span className="tiny">{t('library.detailTitle')}</span>
-          <button
-            type="button"
-            className="icon-action"
-            onClick={onClose}
-            aria-label={t('common.dismiss')}
-            title={t('common.dismiss')}
-          >
-            <CloseIcon />
-          </button>
-        </div>
-        {children}
-      </aside>
-    </div>
-  )
-}
-
 function SkeletonGrid() {
   return (
     <div className="mod-grid" aria-hidden="true">
@@ -1234,10 +1200,15 @@ function SettingsView({
   onToggleDesktopIcons: () => void
   onOpenFolder: () => void
   settings: SettingsSnapshot
-  onSetSetting: (key: keyof SettingsSnapshot, value: boolean | number) => void
+  onSetSetting: (key: keyof SettingsSnapshot, value: boolean | number | string) => void
 }) {
   const { t, i18n } = useTranslation()
   const language: AppLanguage = i18n.language.toLowerCase().startsWith('zh') ? 'zh-CN' : 'en'
+  const [communitySource, setCommunitySource] = useState(settings.communityIndexUrl ?? '')
+
+  useEffect(() => {
+    setCommunitySource(settings.communityIndexUrl ?? '')
+  }, [settings.communityIndexUrl])
   return (
     <div className="panel settings-panel">
       <div className="setting-row">
@@ -1265,6 +1236,29 @@ function SettingsView({
         <div className="setting-tail">
           <button type="button" className="button" onClick={onOpenFolder}>
             {t('settings.openFolder.action')}
+          </button>
+        </div>
+      </div>
+      <div className="setting-row">
+        <div>
+          <h3>{t('settings.communitySource.title')}</h3>
+          <p>{t('settings.communitySource.desc')}</p>
+        </div>
+        <div className="setting-tail community-source">
+          <input
+            className="text-input"
+            value={communitySource}
+            placeholder={t('settings.communitySource.placeholder')}
+            aria-label={t('settings.communitySource.title')}
+            onChange={(event) => setCommunitySource(event.target.value)}
+          />
+          <button
+            type="button"
+            className="button"
+            disabled={communitySource.trim() === (settings.communityIndexUrl ?? '')}
+            onClick={() => onSetSetting('communityIndexUrl', communitySource.trim())}
+          >
+            {t('settings.communitySource.save')}
           </button>
         </div>
       </div>
@@ -1386,8 +1380,10 @@ export default function App() {
     maxFps: 30,
     memorySaver: true,
     muteWallpapers: false,
+    communityIndexUrl: '',
   })
   const [library, setLibrary] = useState<LibrarySnapshot | null>(null)
+  const [community, setCommunity] = useState<CommunitySnapshot | null>(null)
   const [selection, setSelection] = useState<Set<string>>(new Set())
   const [railCollapsed, setRailCollapsed] = useState(false)
   const [selectedModPath, setSelectedModPath] = useState<string | null>(null)
@@ -1398,6 +1394,8 @@ export default function App() {
   const installingRef = useRef<'mod' | 'folder' | 'image' | null>(null)
   const installBaselineRef = useRef(0)
   const refreshPendingRef = useRef(false)
+  const communityRequestedRef = useRef(false)
+  const communityJobRef = useRef('')
 
   useEffect(() => {
     installingRef.current = installing
@@ -1551,6 +1549,25 @@ export default function App() {
             ? current
             : (snapshot.monitors[0] ?? ''),
         )
+      } else if (message.type === 'community') {
+        setCommunity(message.data)
+        const job = message.data.job
+        const key = job ? `${job.phase}:${job.folder}` : ''
+        if (job && key !== communityJobRef.current) {
+          communityJobRef.current = key
+          if (job.phase === 'done') {
+            setNotice({ message: t('community.doneToast', { folder: job.folder }), tone: 'success' })
+          } else if (job.phase === 'failed') {
+            setNotice({
+              message: t(`community.error.${job.error.code}`, {
+                defaultValue: t('community.error.unknown'),
+              }),
+              tone: 'error',
+            })
+          } else if (job.phase === 'cancelled') {
+            setNotice({ message: t('community.cancelled'), tone: 'info' })
+          }
+        }
       } else if (message.type === 'notice') {
         setInstalling(null)
         setNotice({ message: message.message, tone: 'error' })
@@ -1624,7 +1641,7 @@ export default function App() {
     }
   }
 
-  function setSetting(key: keyof SettingsSnapshot, value: boolean | number) {
+  function setSetting(key: keyof SettingsSnapshot, value: boolean | number | string) {
     if (isHosted()) {
       send({ type: 'set-setting', key, value })
     } else {
@@ -1644,6 +1661,44 @@ export default function App() {
   function openWallpapersFolder() {
     if (isHosted()) {
       send({ type: 'open-wallpapers-folder' })
+    }
+  }
+
+  function openCommunityTab() {
+    setTab('community')
+    if (!communityRequestedRef.current) {
+      communityRequestedRef.current = true
+      send({ type: 'community-get-index', refresh: false })
+    }
+  }
+
+  function installCommunityMod(folder: string) {
+    if (isHosted()) {
+      send({ type: 'community-install', folder })
+    }
+  }
+
+  function cancelCommunityInstall() {
+    if (isHosted()) {
+      send({ type: 'community-cancel-download' })
+    }
+  }
+
+  function refreshCommunity() {
+    if (isHosted()) {
+      send({ type: 'community-get-index', refresh: true })
+    }
+  }
+
+  function openCommunityPage(folder: string) {
+    if (isHosted()) {
+      send({ type: 'community-open-page', folder })
+    }
+  }
+
+  function openCommunitySource(folder: string) {
+    if (isHosted()) {
+      send({ type: 'community-open-source', folder })
     }
   }
 
@@ -1810,6 +1865,13 @@ export default function App() {
             <span>{t('nav.library')}</span>
           </button>
           <button
+            className={tab === 'community' ? 'nav-item active' : 'nav-item'}
+            onClick={openCommunityTab}
+          >
+            <CommunityIcon />
+            <span>{t('nav.community')}</span>
+          </button>
+          <button
             className={tab === 'settings' ? 'nav-item active' : 'nav-item'}
             onClick={() => setTab('settings')}
           >
@@ -1822,7 +1884,13 @@ export default function App() {
       <main>
         <header className="page-header">
           <div>
-            <h1>{tab === 'library' ? t('library.title') : t('settings.title')}</h1>
+            <h1>
+              {tab === 'library'
+                ? t('library.title')
+                : tab === 'community'
+                  ? t('community.title')
+                  : t('settings.title')}
+            </h1>
             {tab === 'settings' && (
               <p className="subhead">{t('settings.subtitle')}</p>
             )}
@@ -1989,6 +2057,17 @@ export default function App() {
               />
             )}
           </section>
+        ) : tab === 'community' ? (
+          <CommunityView
+            snapshot={community}
+            actions={{
+              onRefresh: refreshCommunity,
+              onInstall: installCommunityMod,
+              onCancel: cancelCommunityInstall,
+              onOpenPage: openCommunityPage,
+              onOpenSource: openCommunitySource,
+            }}
+          />
         ) : (
           <SettingsView
             desktopIcons={desktopIcons}

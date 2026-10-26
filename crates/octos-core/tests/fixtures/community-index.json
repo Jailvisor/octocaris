@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-10-25T04:00:00Z",
+  "repository": "https://github.com/Jailvisor/octocaris-community",
+  "releaseTag": "wallpapers",
+  "assetBaseUrl": "https://github.com/Jailvisor/octocaris-community/releases/download/wallpapers",
+  "itemCount": 2,
+  "items": [
+    {
+      "folder": "2961764492",
+      "name": "L2D Blue Archive | saori",
+      "author": "Wallpaper Engine",
+      "description": "",
+      "version": "1.0.0",
+      "tags": [],
+      "entry": "index.html",
+      "license": "unknown",
+      "preview": { "url": "previews/2961764492.gif?v=b1949134", "bytes": 850432 },
+      "download": {
+        "url": "https://github.com/Jailvisor/octocaris-community/releases/download/wallpapers/octocaris-2961764492-v1.0.0.zip",
+        "bytes": 37123456,
+        "sha256": "9f2c0d0000000000000000000000000000000000000000000000000000000000"
+      },
+      "fileCount": 2,
+      "filesTruncated": false,
+      "files": [
+        { "path": "index.html", "bytes": 463 },
+        { "path": "octos.json", "bytes": 336 }
+      ],
+      "source": {
+        "kind": "wallpaper-engine",
+        "workshopId": "2961764492",
+        "workshopUrl": "https://steamcommunity.com/sharedfiles/filedetails/?id=2961764492"
+      },
+      "pageUrl": "https://github.com/Jailvisor/octocaris-community/blob/main/README.md#2961764492",
+      "updatedAt": "2026-10-25T04:00:00Z"
+    },
+    {
+      "folder": "image-demo",
+      "name": "Demo image",
+      "author": "Octocaris",
+      "description": "A still image packed as a mod.",
+      "version": "1.2.0",
+      "tags": [],
+      "preview": { "url": "previews/image-demo.gif?v=abc12345", "bytes": 1200 },
+      "download": {
+        "url": "https://github.com/Jailvisor/octocaris-community/releases/download/wallpapers/octocaris-image-demo-v1.2.0.zip",
+        "bytes": 1200,
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "files": [{ "path": "octos.json", "bytes": 100 }]
+    }
+  ]
+}

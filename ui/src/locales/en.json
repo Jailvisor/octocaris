@@ -6,7 +6,8 @@
   "nav": {
     "library": "Library",
     "settings": "Settings",
-    "primary": "Primary"
+    "primary": "Primary",
+    "community": "Community"
   },
   "common": {
     "clearWallpaper": "Clear wallpaper",
@@ -105,6 +106,12 @@
     "muteWallpapers": {
       "title": "Mute wallpapers",
       "desc": "Silence audio from every wallpaper page. Applies immediately."
+    },
+    "communitySource": {
+      "title": "Community catalog URL",
+      "desc": "Leave empty for the built-in catalog. A jsDelivr mirror works when GitHub raw is slow.",
+      "save": "Save",
+      "placeholder": "https://raw.githubusercontent.com/…/index.json"
     }
   },
   "language": {
@@ -148,5 +155,55 @@
     "missingItem": "Missing",
     "collapse": "Collapse queue",
     "expand": "Expand queue"
+  },
+  "community": {
+    "title": "Community",
+    "searchPlaceholder": "Search wallpapers",
+    "count": "{{count}} of {{total}}",
+    "refresh": "Refresh",
+    "loading": "Loading catalog…",
+    "emptyTitle": "No community wallpapers yet",
+    "emptyBody": "Refresh the catalog, or check the community URL in Settings.",
+    "noResults": "No matches",
+    "noResultsBody": "Try a different search or tag.",
+    "retry": "Retry",
+    "install": "Install",
+    "update": "Update",
+    "installed": "Installed",
+    "installedLocal": "Installed (local)",
+    "updateAvailable": "Update available",
+    "downloading": "Downloading {{received}} / {{total}}",
+    "verifying": "Verifying…",
+    "installing": "Installing…",
+    "waitingIndex": "Waiting for the catalog…",
+    "cancel": "Cancel",
+    "cancelled": "Download cancelled",
+    "doneToast": "Installed {{folder}}",
+    "showFiles": "Files ({{count}})",
+    "hideFiles": "Hide files",
+    "filesTruncated": "The archive contains more files than shown.",
+    "sha256": "SHA-256",
+    "openOnGitHub": "Open page",
+    "openSource": "Workshop page",
+    "unknownAuthor": "Unknown author",
+    "pagePrev": "Previous",
+    "pageNext": "Next",
+    "pageStatus": "Page {{page}} / {{pages}}",
+    "error": {
+      "network": "Network error while contacting the community catalog.",
+      "http-status": "The community server returned an error.",
+      "rate-limited": "GitHub is rate limiting downloads. Try again later.",
+      "hash-mismatch": "The downloaded file failed its SHA-256 check.",
+      "size-mismatch": "The downloaded file has the wrong size.",
+      "too-large": "The download is larger than the allowed limit.",
+      "cancelled": "Cancelled.",
+      "busy": "Another download is already running.",
+      "locked": "The wallpaper folder is in use. Switch another wallpaper first, then retry.",
+      "install": "Installing the wallpaper failed.",
+      "app-too-old": "This wallpaper requires a newer Octocaris version.",
+      "invalid-index": "The community catalog is invalid.",
+      "unknown": "Something went wrong.",
+      "unknown-item": "This wallpaper is not in the catalog anymore. Refresh it."
+    }
   }
 }

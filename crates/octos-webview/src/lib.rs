@@ -98,11 +98,13 @@ pub fn create_main_controller(
     hwnd: HWND,
     app_dir: PathBuf,
     wallpapers_dir: PathBuf,
+    cache_dir: PathBuf,
     startup_url: String,
     on_ready: impl FnOnce(Result<(ICoreWebView2Controller, ICoreWebView2)>) + 'static,
 ) -> Result<()> {
     let app_dir_wide = wide_path(&app_dir);
     let wallpapers_wide = wide_path(&wallpapers_dir);
+    let cache_wide = wide_path(&cache_dir);
     let url_wide = wide(&startup_url);
 
     let mut on_ready = Some(on_ready);
@@ -134,6 +136,14 @@ pub fn create_main_controller(
                         PCWSTR::from_raw(wallpapers_wide.as_ptr()),
                         COREWEBVIEW2_HOST_RESOURCE_ACCESS_KIND_ALLOW,
                     )?;
+
+                    if cache_dir.exists() {
+                        webview3.SetVirtualHostNameToFolderMapping(
+                            w!("cache.octos"),
+                            PCWSTR::from_raw(cache_wide.as_ptr()),
+                            COREWEBVIEW2_HOST_RESOURCE_ACCESS_KIND_ALLOW,
+                        )?;
+                    }
 
                     let settings = webview.Settings()?;
                     settings.SetAreDefaultContextMenusEnabled(false)?;
@@ -412,6 +422,7 @@ impl CompositionDevice {
         fps_cap: u32,
         muted: bool,
         dpi: u32,
+        defaults_script: Option<String>,
         mut on_message: impl FnMut(&ICoreWebView2, &str) + 'static,
         mut on_loaded: impl FnMut(&ICoreWebView2) + 'static,
         mut on_process_failed: impl FnMut(&ICoreWebView2, COREWEBVIEW2_PROCESS_FAILED_KIND) + 'static,
@@ -501,6 +512,28 @@ impl CompositionDevice {
                             PCWSTR::from_raw(scope_wide.as_ptr()),
                             &scope_handler,
                         )?;
+
+                        if let Some(defaults) = defaults_script.as_ref() {
+                            let defaults_wide = wide(defaults);
+                            let defaults_handler =
+                                AddScriptToExecuteOnDocumentCreatedCompletedHandler::create(
+                                    Box::new(|result, script_id| {
+                                        match result {
+                                            Ok(()) => debug!(
+                                                "wallpaper defaults script installed: {script_id}"
+                                            ),
+                                            Err(err) => warn!(
+                                                "could not install wallpaper defaults script: {err:?}"
+                                            ),
+                                        }
+                                        Ok(())
+                                    }),
+                                );
+                            webview.AddScriptToExecuteOnDocumentCreated(
+                                PCWSTR::from_raw(defaults_wide.as_ptr()),
+                                &defaults_handler,
+                            )?;
+                        }
 
                         let frame_script = octos_core::frame_cap::script(fps_cap);
                         let frame_wide = wide(&frame_script);

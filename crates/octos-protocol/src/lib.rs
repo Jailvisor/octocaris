@@ -57,6 +57,20 @@ pub enum UiRequest {
         items: Vec<String>,
     },
     PlaylistNext,
+    CommunityGetIndex {
+        #[serde(default)]
+        refresh: bool,
+    },
+    CommunityInstall {
+        folder: String,
+    },
+    CommunityCancelDownload,
+    CommunityOpenPage {
+        folder: String,
+    },
+    CommunityOpenSource {
+        folder: String,
+    },
     OpenWallpapersFolder,
     RefreshLibrary,
     GetWallpaperVisibility,
@@ -73,6 +87,7 @@ pub enum UiResponse {
     DesktopIcons { visible: bool },
     Settings { data: serde_json::Value },
     Library { data: serde_json::Value },
+    Community { data: serde_json::Value },
     WallpaperVisibility { visible: bool },
     Notice { message: String },
     Error { message: String },
@@ -98,6 +113,64 @@ mod tests {
         assert_eq!(
             serde_json::from_str::<UiRequest>(&json).unwrap(),
             UiRequest::InstallImage
+        );
+    }
+
+    #[test]
+    fn community_requests_round_trip() {
+        let request = UiRequest::CommunityGetIndex { refresh: true };
+        assert_eq!(
+            serde_json::to_string(&request).unwrap(),
+            r#"{"type":"community-get-index","refresh":true}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&UiRequest::CommunityGetIndex { refresh: false }).unwrap(),
+            r#"{"type":"community-get-index","refresh":false}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&UiRequest::CommunityInstall {
+                folder: "2961764492".to_string()
+            })
+            .unwrap(),
+            r#"{"type":"community-install","folder":"2961764492"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&UiRequest::CommunityCancelDownload).unwrap(),
+            r#"{"type":"community-cancel-download"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&UiRequest::CommunityOpenPage {
+                folder: "2961764492".to_string()
+            })
+            .unwrap(),
+            r#"{"type":"community-open-page","folder":"2961764492"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&UiRequest::CommunityOpenSource {
+                folder: "2961764492".to_string()
+            })
+            .unwrap(),
+            r#"{"type":"community-open-source","folder":"2961764492"}"#
+        );
+        let parsed: UiRequest = serde_json::from_str(r#"{"type":"community-get-index"}"#).unwrap();
+        assert_eq!(parsed, UiRequest::CommunityGetIndex { refresh: false });
+    }
+
+    #[test]
+    fn community_response_matches_the_push_envelope() {
+        let message = UiResponse::Community {
+            data: serde_json::json!({"status": "ready", "items": []}),
+        };
+        assert_eq!(
+            serde_json::to_string(&message).unwrap(),
+            r#"{"type":"community","data":{"status":"ready","items":[]}}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&UiResponse::Community {
+                data: serde_json::Value::Null
+            })
+            .unwrap(),
+            r#"{"type":"community","data":null}"#
         );
     }
 

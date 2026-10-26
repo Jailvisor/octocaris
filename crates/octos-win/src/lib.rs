@@ -40,12 +40,13 @@ use windows::Win32::System::Threading::CreateMutexW;
 use windows::Win32::UI::HiDpi::GetDpiForWindow;
 use windows::Win32::UI::Shell::{
     CommandLineToArgvW, DragAcceptFiles, DragFinish, DragQueryFileW, HDROP, NIF_ICON, NIF_MESSAGE,
-    NIF_TIP, NIM_ADD, NIM_DELETE, NIM_MODIFY, NOTIFYICONDATAW, Shell_NotifyIconW,
+    NIF_TIP, NIM_ADD, NIM_DELETE, NIM_MODIFY, NOTIFYICONDATAW, Shell_NotifyIconW, ShellExecuteW,
 };
 use windows::Win32::UI::WindowsAndMessaging::*;
 use windows::core::{BOOL, Interface, PCSTR, PCWSTR, w};
 
 pub mod desktop_icons;
+pub mod net;
 pub mod startup;
 pub mod wallpaper;
 
@@ -54,6 +55,7 @@ pub const WM_APP_RESTORE: u32 = WM_APP + 1;
 pub const WM_APP_TRAY: u32 = WM_APP + 2;
 pub const WM_APP_LITE_MODE: u32 = WM_APP + 3;
 pub const WM_APP_LIBRARY_CHANGED: u32 = WM_APP + 4;
+pub const WM_APP_COMMUNITY: u32 = WM_APP + 5;
 
 const TRAY_ID: u32 = 1;
 const MENU_OPEN: usize = 1;
@@ -70,6 +72,7 @@ type CommandHandler = Rc<dyn Fn(&str)>;
 type PlacementHandler = Rc<dyn Fn(WindowPlacement)>;
 type DisplayChangeHandler = Rc<dyn Fn()>;
 type LibraryChangeHandler = Rc<dyn Fn()>;
+type CommunityChangeHandler = Rc<dyn Fn()>;
 type FrontendFactory = Rc<dyn Fn()>;
 type LiteModeHandler = Rc<dyn Fn(bool)>;
 type MuteHandler = Rc<dyn Fn(bool)>;
@@ -91,6 +94,7 @@ struct WinState {
     placement_handler: Option<PlacementHandler>,
     display_change_handler: Option<DisplayChangeHandler>,
     library_change_handler: Option<LibraryChangeHandler>,
+    community_change_handler: Option<CommunityChangeHandler>,
     custom_icon: Option<HICON>,
 }
 
@@ -113,6 +117,7 @@ impl Default for WinState {
             placement_handler: None,
             display_change_handler: None,
             library_change_handler: None,
+            community_change_handler: None,
             custom_icon: None,
         }
     }
@@ -424,6 +429,40 @@ pub fn set_display_change_handler(handler: impl Fn() + 'static) {
 /// Register the UI-thread callback that rebuilds the library snapshot.
 pub fn set_library_change_handler(handler: impl Fn() + 'static) {
     with_state(|state| state.library_change_handler = Some(Rc::new(handler)));
+}
+
+pub fn set_community_change_handler(handler: impl Fn() + 'static) {
+    with_state(|state| state.community_change_handler = Some(Rc::new(handler)));
+}
+
+/// Ask the UI thread to publish fresh community progress. Background-thread safe.
+pub fn notify_community_changed() {
+    unsafe {
+        if let Ok(hwnd) = FindWindowW(MAIN_CLASS, PCWSTR::null())
+            && !hwnd.is_invalid()
+        {
+            let _ = PostMessageW(Some(hwnd), WM_APP_COMMUNITY, WPARAM(0), LPARAM(0));
+        }
+    }
+}
+
+/// Open an https link in the user's browser. Only https is accepted.
+pub fn open_https_url(url: &str) -> anyhow::Result<()> {
+    if !url.to_ascii_lowercase().starts_with("https://") {
+        anyhow::bail!("only https links can be opened");
+    }
+    let wide: Vec<u16> = url.encode_utf16().chain(std::iter::once(0)).collect();
+    unsafe {
+        ShellExecuteW(
+            None,
+            w!("open"),
+            PCWSTR::from_raw(wide.as_ptr()),
+            PCWSTR::null(),
+            PCWSTR::null(),
+            SW_SHOWNORMAL,
+        );
+    }
+    Ok(())
 }
 
 /// Ask the UI thread to rebuild and push a fresh library snapshot. Safe to call
@@ -1065,6 +1104,13 @@ unsafe extern "system" fn wndproc(
         WM_APP_LIBRARY_CHANGED => {
             info!("library change notification received");
             let handler = with_state(|state| state.library_change_handler.clone());
+            if let Some(handler) = handler {
+                handler();
+            }
+            LRESULT(0)
+        }
+        WM_APP_COMMUNITY => {
+            let handler = with_state(|state| state.community_change_handler.clone());
             if let Some(handler) = handler {
                 handler();
             }

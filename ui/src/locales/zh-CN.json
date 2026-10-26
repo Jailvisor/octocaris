@@ -6,7 +6,8 @@
   "nav": {
     "library": "壁纸库",
     "settings": "设置",
-    "primary": "主导航"
+    "primary": "主导航",
+    "community": "社区"
   },
   "common": {
     "clearWallpaper": "清除壁纸",
@@ -105,6 +106,12 @@
     "muteWallpapers": {
       "title": "静音壁纸",
       "desc": "关闭所有壁纸页面的声音；立即生效。"
+    },
+    "communitySource": {
+      "title": "社区索引地址",
+      "desc": "留空使用内置目录。GitHub raw 慢时可以换成 jsDelivr 镜像。",
+      "save": "保存",
+      "placeholder": "https://raw.githubusercontent.com/…/index.json"
     }
   },
   "language": {
@@ -148,5 +155,55 @@
     "missingItem": "缺失",
     "collapse": "收起队列",
     "expand": "展开队列"
+  },
+  "community": {
+    "title": "社区",
+    "searchPlaceholder": "搜索壁纸",
+    "count": "{{count}} / {{total}}",
+    "refresh": "刷新",
+    "loading": "正在加载目录…",
+    "emptyTitle": "社区还没有壁纸",
+    "emptyBody": "刷新目录，或检查设置里的社区索引地址。",
+    "noResults": "没有匹配结果",
+    "noResultsBody": "换个关键词或标签试试。",
+    "retry": "重试",
+    "install": "安装",
+    "update": "更新",
+    "installed": "已安装",
+    "installedLocal": "本地已安装",
+    "updateAvailable": "可更新",
+    "downloading": "下载中 {{received}} / {{total}}",
+    "verifying": "正在校验…",
+    "installing": "正在安装…",
+    "waitingIndex": "等待目录加载…",
+    "cancel": "取消",
+    "cancelled": "已取消下载",
+    "doneToast": "已安装 {{folder}}",
+    "showFiles": "文件（{{count}}）",
+    "hideFiles": "收起文件",
+    "filesTruncated": "压缩包内还有更多文件。",
+    "sha256": "SHA-256",
+    "openOnGitHub": "打开详情页",
+    "openSource": "创意工坊页",
+    "unknownAuthor": "未知作者",
+    "pagePrev": "上一页",
+    "pageNext": "下一页",
+    "pageStatus": "第 {{page}} / {{pages}} 页",
+    "error": {
+      "network": "连接社区目录时网络出错。",
+      "http-status": "社区服务器返回了错误。",
+      "rate-limited": "GitHub 正在限流，请稍后再试。",
+      "hash-mismatch": "下载文件的 SHA-256 校验失败。",
+      "size-mismatch": "下载文件大小不正确。",
+      "too-large": "下载文件超过允许的大小。",
+      "cancelled": "已取消。",
+      "busy": "已有下载在进行中。",
+      "locked": "壁纸目录被占用。先把这张壁纸切走，再重试。",
+      "install": "安装壁纸失败。",
+      "app-too-old": "这个壁纸需要更新的 Octocaris 版本。",
+      "invalid-index": "社区目录格式无效。",
+      "unknown": "出了点问题。",
+      "unknown-item": "目录里已经没有这个壁纸，请刷新。"
+    }
   }
 }

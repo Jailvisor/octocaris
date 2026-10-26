@@ -25,6 +25,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 };
 use windows::core::{PCWSTR, w};
 
+mod community;
 mod rotation;
 
 pub(crate) static PREFERENCES: Mutex<Option<Preferences>> = Mutex::new(None);
@@ -118,6 +119,14 @@ fn run(paths: Paths) -> Result<()> {
     let had_lite_mode = preferences.app_options.extra.remove("liteMode").is_some();
     let saved_window: Option<WindowPlacement> = preferences.window;
     let removed_staging = octos_storage::cleanup_staging(&paths.wallpapers);
+    let recovered_installs = octos_storage::recover_interrupted_install(&paths.wallpapers);
+    if recovered_installs > 0 {
+        info!("restored {recovered_installs} interrupted community install(s)");
+    }
+    let removed_parts = octos_storage::cleanup_community(&paths);
+    if removed_parts > 0 {
+        info!("removed {removed_parts} partial community download(s)");
+    }
     if removed_staging > 0 {
         info!("removed {removed_staging} stale install staging director(ies)");
     }
@@ -137,6 +146,8 @@ fn run(paths: Paths) -> Result<()> {
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner()) =
         Some(octos_storage::PrefsWriter::start());
+
+    community::init(paths.clone());
 
     unsafe {
         let _ = SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
@@ -174,6 +185,11 @@ fn run(paths: Paths) -> Result<()> {
         if WALLPAPERS_READY.load(Ordering::SeqCst) {
             push_library(&library_paths);
         }
+    });
+
+    let community_paths = paths.clone();
+    octos_win::set_community_change_handler(move || {
+        community::on_ui_wake(&community_paths);
     });
 
     let command_paths = paths.clone();
@@ -239,6 +255,7 @@ fn run(paths: Paths) -> Result<()> {
         octos_win::set_drop_handler(move |dropped| install_dropped(dropped, &drop_paths));
     }
     let user_data_dir = paths.webview_data.clone();
+    let community_dir = paths.community.clone();
     let startup_url = std::env::var("OCTOS_UI_DEV_URL")
         .unwrap_or_else(|_| "https://app.octos/index.html".to_string());
 
@@ -254,6 +271,7 @@ fn run(paths: Paths) -> Result<()> {
         Ok(environment) => {
             let app_dir = app_dir.clone();
             let wallpapers_dir = wallpapers_dir.clone();
+            let community_dir = community_dir.clone();
             let startup_url = startup_url.clone();
             let library_paths = library_paths.clone();
             let push_library_paths = library_paths.clone();
@@ -262,11 +280,13 @@ fn run(paths: Paths) -> Result<()> {
             let attach_frontend: Rc<dyn Fn()> = {
                 let app_dir = app_dir.clone();
                 let wallpapers_dir = wallpapers_dir.clone();
+                let community_dir = community_dir.clone();
                 let startup_url = startup_url.clone();
                 let library_paths = library_paths.clone();
                 Rc::new(move || {
                     let app_dir = app_dir.clone();
                     let wallpapers_dir = wallpapers_dir.clone();
+                    let community_dir = community_dir.clone();
                     let startup_url = startup_url.clone();
                     let library_paths = library_paths.clone();
                     if let Err(err) = octos_webview::create_main_controller(
@@ -274,6 +294,7 @@ fn run(paths: Paths) -> Result<()> {
                         hwnd,
                         app_dir,
                         wallpapers_dir,
+                        community_dir,
                         startup_url,
                         move |result| match result {
                             Ok((controller, webview)) => {
@@ -351,6 +372,59 @@ fn run(paths: Paths) -> Result<()> {
                                                         message: format!("{err}"),
                                                     })
                                                 }
+                                            }
+                                        }
+                                        UiRequest::CommunityGetIndex { refresh } => {
+                                            community::request_index(&library_paths, refresh);
+                                            Some(UiResponse::Community {
+                                                data: community::snapshot(&library_paths),
+                                            })
+                                        }
+                                        UiRequest::CommunityInstall { folder } => {
+                                            match community::start_install(&library_paths, &folder)
+                                            {
+                                                Ok(()) => Some(UiResponse::Community {
+                                                    data: community::snapshot(&library_paths),
+                                                }),
+                                                Err(err) => Some(UiResponse::Error {
+                                                    message: format!("community:{err}"),
+                                                }),
+                                            }
+                                        }
+                                        UiRequest::CommunityCancelDownload => {
+                                            community::cancel_download();
+                                            Some(UiResponse::Community {
+                                                data: community::snapshot(&library_paths),
+                                            })
+                                        }
+                                        UiRequest::CommunityOpenPage { folder } => {
+                                            match community::page_url(&folder) {
+                                                Some(url) => {
+                                                    if let Err(err) =
+                                                        octos_win::open_https_url(&url)
+                                                    {
+                                                        warn!("could not open {url}: {err:?}");
+                                                    }
+                                                    None
+                                                }
+                                                None => Some(UiResponse::Error {
+                                                    message: "community:unknown-item".to_string(),
+                                                }),
+                                            }
+                                        }
+                                        UiRequest::CommunityOpenSource { folder } => {
+                                            match community::source_url(&folder) {
+                                                Some(url) => {
+                                                    if let Err(err) =
+                                                        octos_win::open_https_url(&url)
+                                                    {
+                                                        warn!("could not open {url}: {err:?}");
+                                                    }
+                                                    None
+                                                }
+                                                None => Some(UiResponse::Error {
+                                                    message: "community:no-source".to_string(),
+                                                }),
                                             }
                                         }
                                         UiRequest::SetMonitorMod {
@@ -877,6 +951,7 @@ fn run(paths: Paths) -> Result<()> {
     }
     // Flush the latest window placement and session state before tearing down.
     flush_preferences(&flush_paths);
+    community::shutdown();
     octos_win::wallpaper::shutdown();
     octos_win::remove_tray_icon(hwnd);
     info!("message loop stopped");
@@ -941,6 +1016,9 @@ fn settings_snapshot() -> serde_json::Value {
         "maxFps": options.map(|options| options.max_fps).unwrap_or(30),
         "memorySaver": options.map(|options| options.memory_saver).unwrap_or(true),
         "muteWallpapers": options.map(|options| options.mute_wallpapers).unwrap_or(false),
+        "communityIndexUrl": options
+            .and_then(|options| options.community_index_url.clone())
+            .unwrap_or_default(),
     })
 }
 
@@ -994,6 +1072,21 @@ fn apply_setting(paths: &Paths, key: &str, value: &serde_json::Value) -> Result<
                 preferences.app_options.mute_wallpapers = enabled;
                 octos_win::wallpaper::set_muted(enabled);
             }
+            "communityIndexUrl" => {
+                let text = value
+                    .as_str()
+                    .ok_or_else(|| anyhow!("setting communityIndexUrl expects a string"))?
+                    .trim()
+                    .to_string();
+                let url = if text.is_empty() {
+                    octos_core::community::DEFAULT_INDEX_URL.to_string()
+                } else {
+                    text.clone()
+                };
+                community::set_source(paths, &url)?;
+                preferences.app_options.community_index_url =
+                    if text.is_empty() { None } else { Some(url) };
+            }
             other => return Err(anyhow!("unknown setting: {other}")),
         }
     }
@@ -1010,7 +1103,14 @@ fn snapshot_preferences() -> Option<Preferences> {
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     let preferences = guard.as_mut()?;
     preferences.set_selected(selected);
-    preferences.set_mod_options(options);
+    // Merge instead of replacing: mods that are not on a monitor right now still
+    // keep their stored option values (and community updates preserve them).
+    for (key, value) in options {
+        preferences.mod_options.insert(key, value);
+    }
+    preferences
+        .mod_options
+        .retain(|key, _| FsPath::new(key).is_dir());
     Some(preferences.clone())
 }
 
@@ -1102,7 +1202,7 @@ fn apply_monitor_mod(paths: &Paths, monitor: &str, folder: Option<&str>) -> anyh
 
 /// Generate missing card thumbnails off the UI thread. The window procedure
 /// pushes a fresh snapshot once the files exist.
-fn backfill_thumbnails(paths: &Paths) {
+pub(crate) fn backfill_thumbnails(paths: &Paths) {
     if THUMBNAIL_BACKFILL_RUNNING.swap(true, Ordering::SeqCst) {
         return;
     }
@@ -1133,6 +1233,7 @@ fn push_settings() {
 }
 
 pub(crate) fn push_library(paths: &Paths) {
+    community::on_library_changed(paths);
     if let Ok(snapshot) = library_snapshot(paths)
         && let Ok(payload) = serde_json::to_string(&serde_json::json!({
             "type": "library",
@@ -1141,6 +1242,7 @@ pub(crate) fn push_library(paths: &Paths) {
     {
         octos_win::post_to_main_webview(&payload);
     }
+    community::push(paths);
 }
 
 /// A monitor was added, removed or moved. Reconcile already rebuilt the slots;
@@ -1345,7 +1447,11 @@ fn playlist_snapshot(mods: &[catalog::ModCard]) -> serde_json::Value {
     })
 }
 
-fn set_monitor_mod(paths: &Paths, monitor_id: &str, folder_path: &str) -> anyhow::Result<()> {
+pub(crate) fn set_monitor_mod(
+    paths: &Paths,
+    monitor_id: &str,
+    folder_path: &str,
+) -> anyhow::Result<()> {
     let report = catalog::scan(&paths.wallpapers)?;
     let card = report
         .mods
@@ -1436,6 +1542,16 @@ fn execute_cli(command: Command, paths: &Paths) {
             }
         },
         Command::DevTools => octos_win::schedule_open_dev_tools(),
+        Command::CommunityInstall { folder } => {
+            if let Err(err) = community::start_install(paths, &folder) {
+                error!("cli community install failed: {err:?}");
+                show_error(&format!(
+                    "[Octocaris CLI] Community install failed\n\n{err}"
+                ));
+            }
+        }
+        Command::CommunityRefresh => community::request_index(paths, true),
+        Command::CommunityCancel => community::cancel_download(),
     }
 }
 

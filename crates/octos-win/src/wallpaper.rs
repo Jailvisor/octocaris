@@ -61,6 +61,7 @@ struct MonitorSlot {
     insert_after: Option<HWND>,
     webview: Option<WallpaperWebView>,
     entry_url: Option<String>,
+    mod_key: Option<String>,
     user_visible: bool,
     fullscreen: bool,
     /// A controller create call is in flight; another reconcile must not start
@@ -89,6 +90,7 @@ impl MonitorSlot {
             insert_after: None,
             webview: None,
             entry_url: None,
+            mod_key: None,
             user_visible: true,
             fullscreen: false,
             creating: false,
@@ -235,10 +237,11 @@ pub fn set_all_mod_with(
         }
         state
             .session
-            .load_options(mod_key, &defaults, stored.as_ref());
+            .load_options(mod_key.clone(), &defaults, stored.as_ref());
 
         for slot in &mut state.slots {
             slot.close_webview();
+            slot.mod_key = Some(mod_key.clone());
             slot.entry_url = Some(entry_url.clone());
             slot.user_visible = true;
         }
@@ -462,6 +465,7 @@ pub fn set_monitor_mod_with(
             webview.close();
         }
         slot.entry_url = Some(entry_url);
+        slot.mod_key = Some(mod_key.clone());
         slot.user_visible = true;
 
         state.session.select(monitor_id, mod_key.clone());
@@ -491,6 +495,7 @@ pub fn switch_mod_all(
             session.load_options(mod_key.clone(), &defaults, stored.as_ref());
             for slot in slots.iter_mut() {
                 session.select(slot.device_name.clone(), mod_key.clone());
+                slot.mod_key = Some(mod_key.clone());
                 slot.entry_url = Some(entry_url.clone());
                 slot.user_visible = true;
                 let mut failed = false;
@@ -538,6 +543,7 @@ pub fn clear_monitor_mod(monitor_id: &str) -> Result<()> {
             .find(|slot| slot.device_name == monitor_id)
         {
             slot.entry_url = None;
+            slot.mod_key = None;
             if let Some(webview) = slot.webview.take() {
                 webview.close();
             }
@@ -557,6 +563,7 @@ pub fn clear_all() {
     let _ = with_state(|state| {
         for slot in &mut state.slots {
             slot.entry_url = None;
+            slot.mod_key = None;
             slot.close_webview();
             if !slot.hwnd.is_invalid() {
                 unsafe {
@@ -867,6 +874,10 @@ impl WallpaperState {
         let loaded_device = device_name.clone();
         let failed_device = device_name.clone();
 
+        let defaults_script = self.slots[index]
+            .mod_key
+            .as_deref()
+            .and_then(|key| octos_core::web_defaults::script_for_folder(std::path::Path::new(key)));
         self.slots[index].creating = true;
         let created = dcomp.create_wallpaper_controller(
             &environment,
@@ -877,6 +888,7 @@ impl WallpaperState {
             self.fps_cap,
             self.muted,
             dpi,
+            defaults_script,
             move |webview, text| {
                 handle_wallpaper_message(&message_device, hwnd, webview, text);
             },

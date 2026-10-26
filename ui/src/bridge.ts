@@ -31,6 +31,7 @@ export type SettingsSnapshot = {
   maxFps: number
   memorySaver: boolean
   muteWallpapers: boolean
+  communityIndexUrl: string
 }
 
 export type PlaylistSnapshot = {
@@ -53,6 +54,59 @@ export type LibrarySnapshot = {
   playlist?: PlaylistSnapshot
 }
 
+export type CommunityFile = { path: string; bytes: number }
+
+export type CommunityInstalled = {
+  version: string | null
+  managed: boolean
+  update_available: boolean
+  folder_path: string
+}
+
+export type CommunityItem = {
+  folder: string
+  name: string
+  author: string
+  description: string
+  version: string
+  tags: string[]
+  entry: string | null
+  license: string | null
+  min_app_version: string | null
+  preview_url: string | null
+  preview_bytes: number | null
+  download_bytes: number
+  sha256: string
+  file_count: number
+  files_truncated: boolean
+  files: CommunityFile[]
+  page_url: string | null
+  workshop_url: string | null
+  updated_at: string | null
+  installed: CommunityInstalled | null
+}
+
+export type CommunityError = { code: string; detail: string }
+
+export type CommunityJob =
+  | { folder: string; phase: 'waiting' }
+  | { folder: string; phase: 'downloading' | 'verifying'; received: number; total: number | null }
+  | { folder: string; phase: 'installing' }
+  | { folder: string; phase: 'done'; version: string }
+  | { folder: string; phase: 'failed'; error: CommunityError }
+  | { folder: string; phase: 'cancelled' }
+
+export type CommunitySnapshot = {
+  status: 'idle' | 'loading' | 'ready' | 'error'
+  source: string
+  fetched_at: number | null
+  from_cache: boolean
+  error: CommunityError | null
+  warnings: string[]
+  job: CommunityJob | null
+  items: CommunityItem[]
+}
+
 export type UiResponse =
   | { type: 'pong'; id: number; version: string }
   | { type: 'wallpaper-state'; active: boolean }
@@ -60,6 +114,7 @@ export type UiResponse =
   | { type: 'wallpaper-visibility'; visible: boolean }
   | { type: 'settings'; data: SettingsSnapshot }
   | { type: 'library'; data: LibrarySnapshot }
+  | { type: 'community'; data: CommunitySnapshot }
   | { type: 'notice'; message: string }
   | { type: 'error'; message: string }
 

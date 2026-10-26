@@ -2168,3 +2168,241 @@ h1 {
   }
 
 }
+
+/* ---- Community ---- */
+.community-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 14px;
+}
+.community-search {
+  flex: 1 1 240px;
+  min-width: 200px;
+}
+.text-input {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  color: var(--text);
+  font: inherit;
+  padding: 8px 10px;
+  min-height: 36px;
+}
+.text-input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.tag-chip {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 4px 10px;
+}
+.tag-chip:hover {
+  border-color: var(--line-strong);
+  color: var(--text);
+}
+.tag-chip.active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--text);
+}
+.tag-chip.static {
+  cursor: default;
+}
+.community-toolbar-tail {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-left: auto;
+}
+.community-banner {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  color: var(--muted);
+  font-size: 12px;
+  margin-bottom: 10px;
+  padding: 8px 10px;
+}
+.community-banner.error {
+  border-color: var(--amber);
+  color: var(--amber);
+}
+.community-grid {
+  margin-bottom: 12px;
+}
+.community-card {
+  text-align: left;
+  width: 100%;
+}
+.community-card .mod-card-art {
+  position: relative;
+}
+.community-placeholder {
+  display: grid;
+  place-items: center;
+  font-size: 42px;
+  color: var(--muted);
+  height: 100%;
+}
+.community-badges {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  gap: 4px;
+}
+.badge {
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 2px 8px;
+  background: var(--panel-solid);
+  border: 1px solid var(--line);
+  color: var(--text);
+}
+.badge.installed {
+  border-color: var(--green);
+  color: var(--green);
+}
+.badge.update {
+  border-color: var(--amber);
+  color: var(--amber);
+}
+.community-skeleton {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 28px 4px;
+}
+.community-empty {
+  margin-top: 24px;
+}
+.community-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.drawer-preview {
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  object-fit: cover;
+  border-radius: var(--radius-card);
+  background: var(--panel-hover);
+}
+.drawer-preview.placeholder {
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  font-size: 52px;
+}
+.community-description {
+  color: var(--muted);
+  white-space: pre-line;
+}
+.community-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.community-actions,
+.community-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.community-meta-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
+.link-button {
+  background: none;
+  border: none;
+  color: var(--accent);
+  cursor: pointer;
+  font: inherit;
+  padding: 0;
+  text-align: left;
+}
+.progress {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.progress-bar {
+  background: var(--panel-hover);
+  border-radius: 999px;
+  height: 6px;
+  overflow: hidden;
+}
+.progress-bar span {
+  background: var(--accent);
+  display: block;
+  height: 100%;
+  transition: width 0.2s ease;
+}
+.progress-label {
+  color: var(--muted);
+  font-size: 12px;
+}
+.file-list {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  list-style: none;
+  margin: 0;
+  max-height: 220px;
+  overflow: auto;
+  padding: 0;
+}
+.file-row {
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  font-size: 12px;
+  gap: 8px;
+  justify-content: space-between;
+  padding: 4px 8px;
+}
+.file-row:last-child {
+  border-bottom: none;
+}
+.file-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.file-size {
+  color: var(--muted);
+  flex: none;
+}
+.community-hash {
+  color: var(--muted);
+  font-size: 11px;
+  word-break: break-all;
+}
+.community-source {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.community-source .text-input {
+  width: min(360px, 45vw);
+}
+@media (max-width: 720px) {
+  .community-toolbar-tail {
+    margin-left: 0;
+  }
+  .community-source .text-input {
+    width: 100%;
+  }
+}

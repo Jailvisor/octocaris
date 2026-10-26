@@ -49,6 +49,9 @@ pub struct AppOptions {
     /// Mute audio from every wallpaper page.
     #[serde(default)]
     pub mute_wallpapers: bool,
+    /// Override the community catalog URL (empty means the built-in default).
+    #[serde(default)]
+    pub community_index_url: Option<String>,
     #[serde(flatten)]
     pub extra: Map<String, Value>,
 }
@@ -62,6 +65,7 @@ impl Default for AppOptions {
             max_fps: default_max_fps(),
             memory_saver: true,
             mute_wallpapers: false,
+            community_index_url: None,
             extra: Map::new(),
         }
     }

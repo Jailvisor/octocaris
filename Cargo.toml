@@ -23,6 +23,7 @@ authors = ["Octos Rust contributors"]
 anyhow = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
+sha2 = "0.11"
 zip = { version = "9.0.5", default-features = false, features = ["deflate"] }
 tempfile = "3.27.0"
 rfd = "0.17.2"

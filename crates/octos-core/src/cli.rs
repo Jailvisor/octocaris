@@ -17,6 +17,12 @@ pub enum Command {
     New { folder: PathBuf },
     /// Open DevTools on every wallpaper WebView.
     DevTools,
+    /// Download and install a wallpaper from the community catalog.
+    CommunityInstall { folder: String },
+    /// Refresh the community catalog from its source.
+    CommunityRefresh,
+    /// Cancel an in-flight community download.
+    CommunityCancel,
 }
 
 /// Parse arguments *after* the executable name.
@@ -53,6 +59,17 @@ pub fn parse(args: &[String]) -> Option<Command> {
             Some(Command::New { folder })
         }
         "dev-tools" => Some(Command::DevTools),
+        "community" => match args.get(1).map(String::as_str) {
+            Some("install") => args
+                .get(2)
+                .filter(|folder| !folder.is_empty() && !folder.starts_with('-'))
+                .map(|folder| Command::CommunityInstall {
+                    folder: folder.clone(),
+                }),
+            Some("refresh") => Some(Command::CommunityRefresh),
+            Some("cancel") => Some(Command::CommunityCancel),
+            _ => None,
+        },
         _ => None,
     }
 }
@@ -68,6 +85,26 @@ mod tests {
     #[test]
     fn no_arguments_means_no_command() {
         assert_eq!(parse(&[]), None);
+    }
+
+    #[test]
+    fn community_subcommands() {
+        assert_eq!(
+            parse(&args(&["community", "install", "2961764492"])),
+            Some(Command::CommunityInstall {
+                folder: "2961764492".to_string()
+            })
+        );
+        assert_eq!(parse(&args(&["community", "install"])), None);
+        assert_eq!(
+            parse(&args(&["community", "refresh"])),
+            Some(Command::CommunityRefresh)
+        );
+        assert_eq!(
+            parse(&args(&["community", "cancel"])),
+            Some(Command::CommunityCancel)
+        );
+        assert_eq!(parse(&args(&["community", "nope"])), None);
     }
 
     #[test]
