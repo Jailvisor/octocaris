@@ -11,6 +11,7 @@ Octocaris 是把 Octos 重写为 Rust + WebView2 的轻量动态壁纸运行器�
 2. 双击 `octocaris.exe`；所有数据都在旁边的 `data\` 里，整个文件夹可以拷走。
 3. 缺少 WebView2 Runtime 时，运行包内的 `MicrosoftEdgeWebview2Setup.exe`（需联网）。
 4. exe 未签名，SmartScreen 提示时选“更多信息 → 仍要运行”。
+5. 程序图标（章鱼）已经嵌在 exe 里，不需要额外的 `.ico` 文件。
 
 ## 包含的功能
 
@@ -38,4 +39,4 @@ Octocaris 是把 Octos 重写为 Rust + WebView2 的轻量动态壁纸运行器�
 - 老式 web 壁纸的默认参数只覆盖 BGM / 视线追踪 / 鼠标轨迹 / 贴图分辨率四项。
 - 媒体/音频 API 仍为协议桩。
 
-SHA-256：`c5958bf16b06e41c20b062ac13db74da1a156713c9ce81e68c99f45d5af587a9`
+SHA-256：`bfc5662c256a820c265b2c03e5b2d29e0053be0ac0477c41cfa2ed0de0e067c3`
