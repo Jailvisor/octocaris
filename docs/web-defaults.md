@@ -73,7 +73,18 @@
 - `storage`：localStorage 键 → 要补的默认值；一个包可以有多个键（普通 mod 也可以用它自己的键）。
 - `mode`：
   - `fill`（默认）：只写当前对象里**不存在**的键，用户已有值优先；
-  - `force`：每次加载都覆盖指定键（适合“BGM 永远静音”）。
+  - `once`：每个字段首次出现或被改动时写一次，之后完全尊重用户/壁纸自己保存的值；
+  - `force`：**历史别名，等同 `once`**。2026-10-28 之前发布的包用它做“一次性迁移”，
+    按原语义（每次覆盖）运行会把每屏微调全部冲掉，所以现在只按 `once` 处理，
+    已上传的包不用重新发布；
+  - `pin`：每次加载都覆盖指定字段（“BGM 永远静音”这种不许改的键）。
+- `position` / `scale`（`VISUAL_FIELDS`）**永远不会**从默认值写入：它们是壁纸面板按屏幕
+  保存的几何值，写在共享默认值里只会把某个人/某块屏的数值套给别人。
+
+> **`once` 与每屏微调**：壁纸的 `position`/`scale` 由用户在面板里按屏幕调好并存进
+> 各自的（带显示器前缀的）localStorage。`once` 只在字段首次/改动时写一次，
+> 之后每块屏保留自己的值。“已应用过哪些默认值”记在同一个（已按显示器隔离的）存储里，
+> 所以每块屏独立计算。
 - 只允许 JSON 对象/字符串/数字/布尔/null；不执行任何代码。
 - 文件随包一起走，社区更新会保留；不需要改 `index.json`。
 
@@ -85,26 +96,60 @@
 
 ```rust
 pub const FILE: &str = "octos-defaults.json";
+pub const VISUAL_FIELDS: [&str; 2] = ["position", "scale"];
 
-pub struct WebDefaults { pub mode: FillOrForce, pub storage: BTreeMap<String, Map<String, Value>> }
+pub struct WebDefaults { pub mode: Mode, pub storage: BTreeMap<String, Map<String, Value>> }
 
-pub fn load(folder: &Path) -> Option<WebDefaults>;       // 解析 + 校验
-pub fn script(defaults: &WebDefaults) -> String;         // 生成注入脚本
+/// 程序级默认值（preferences.json 的 appOptions.webDefaults）
+pub struct WebDefaultsSetting { pub enabled: bool, pub fields: Map<String, Value> }
+
+pub fn load(folder: &Path) -> Option<WebDefaults>;                 // 解析 + 校验
+pub fn script(defaults: &WebDefaults) -> String;                   // 生成注入脚本
+pub fn storage_key(folder: &Path) -> Option<String>;               // loadJson.fileNames[0]
+pub fn script_for_folder(folder: &Path, global: &WebDefaultsSetting) -> Option<String>;
+pub fn reset_script(folder: &Path) -> Option<String>;              // 清记录并重载
 ```
+
+`Mode` 是 `Fill` / `Once` / `Force`（=Once）/ `Pin`。
+
+`script_for_folder` 的合并顺序（后者覆盖前者，`VISUAL_FIELDS` 始终跳过）：
+
+1. 程序级默认值（`appOptions.webDefaults.enabled` 为真时，作用于所有老式 web 壁纸）；
+2. 包内 `octos-defaults.json` 中与 `storage_key` 匹配的那一项（字段级覆盖）。
+
+合并结果固定按 `Once` 生成脚本；没有任何字段可写时返回 `None`，不注入。
+
+### 2.1 程序级默认值与“恢复默认参数”
+
+- 设置页“Web 壁纸默认值”：启用开关 + BGM 音量 / 视线追踪 / 鼠标轨迹 / 贴图分辨率。
+  保存到 `preferences.json` 的 `appOptions.webDefaults`，改动后立即重建用到不同脚本的
+  controller（`octos_win::wallpaper::set_web_defaults`）。
+- 壁纸详情抽屉“恢复默认参数” → `UiRequest::ResetWebDefaults` →
+  `reset_defaults()` 在该壁纸的每个 WebView 里删除
+  `__octos_defaults__<storage key>` 标记并重载，于是下次加载重新写入默认值。
+  只影响有默认值的字段，用户调过的 `position`/`scale` 保持不变。
+- 旧包兼容：已上传的 189 个社区包里的 `force` 按 `once` 执行，`position`/`scale` 被忽略，
+  不需要重新上传。
 
 生成的脚本（在存储前缀脚本之后执行）：
 
 ```js
 (function () {
   const defaults = { "CH0100_home": { "bgmVolume": 0 } };
-  const force = false;
+  const force = false;      // 每次覆盖
+  const once = true;        // 每个修订只应用一次
+  const tags = { "CH0100_home": "3f2a…" };   // once 的逐键修订标签
   for (const key of Object.keys(defaults)) {
     try {
+      const tag = tags ? tags[key] : null;
+      const marker = "__octos_defaults__" + key;
+      if (once && tag && localStorage.getItem(marker) === tag) continue;
       const current = JSON.parse(localStorage.getItem(key) || "{}");
-      const merged = force
+      const merged = (force || once)
         ? Object.assign({}, current, defaults[key])
         : Object.assign({}, defaults[key], current);
       localStorage.setItem(key, JSON.stringify(merged));
+      if (once && tag) localStorage.setItem(marker, tag);
     } catch (_) {}
   }
 })();
@@ -257,8 +302,10 @@ if (saved) Object.assign(settings, JSON.parse(saved));
 
 - `storage` 的键必须等于该包 `loadJson.json` 的 `fileNames[0]`。
 - `mode: "fill"`：只补用户当前设置里没有的键，用户改过的值保留。
-- `mode: "force"`：每次加载都覆盖这几个键。
-- 旧版没有 `version` 字段，所以“改了默认值但用户本地已有设置”时，`fill` 不会生效；要生效用 `force`，或删掉对应的 localStorage 键。
+- `mode: "once"`：每个字段首次/改动时应用一次，之后保留用户/壁纸保存的值（推荐，见 §1）。
+- `mode: "force"`：历史别名，按 `once` 处理（已发布包兼容）。
+- `mode: "pin"`：每次加载都覆盖这几个键。
+- 旧版没有 `version` 字段，所以“改了默认值但用户本地已有设置”时，`fill` 不会生效；要生效用 `once`（一次性迁移）或 `force`（永久固定）。
 
 ### 9.2 注入脚本
 

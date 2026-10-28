@@ -391,6 +391,13 @@ fn run(paths: Paths) -> Result<()> {
                                                 }),
                                             }
                                         }
+                                        UiRequest::ResetWebDefaults { folder } => {
+                                            let reset = octos_win::wallpaper::reset_defaults(
+                                                folder.as_deref(),
+                                            );
+                                            info!("web defaults reset on {reset} wallpaper(s)");
+                                            None
+                                        }
                                         UiRequest::CommunityCancelDownload => {
                                             community::cancel_download();
                                             Some(UiResponse::Community {
@@ -895,6 +902,9 @@ fn run(paths: Paths) -> Result<()> {
                     octos_win::wallpaper::set_muted(
                         startup_preferences.app_options.mute_wallpapers,
                     );
+                    octos_win::wallpaper::set_web_defaults(
+                        startup_preferences.app_options.web_defaults.clone(),
+                    );
                     // Lite mode implies MemorySaver; honour a persisted opt-out otherwise.
                     octos_win::set_memory_saver(startup_preferences.app_options.memory_saver);
                     apply_startup_preferences(
@@ -1019,6 +1029,9 @@ fn settings_snapshot() -> serde_json::Value {
         "communityIndexUrl": options
             .and_then(|options| options.community_index_url.clone())
             .unwrap_or_default(),
+        "webDefaults": options
+            .map(|options| serde_json::to_value(&options.web_defaults).unwrap_or_default())
+            .unwrap_or_else(|| serde_json::json!({"enabled": false, "fields": {}})),
     })
 }
 
@@ -1071,6 +1084,14 @@ fn apply_setting(paths: &Paths, key: &str, value: &serde_json::Value) -> Result<
                 let enabled = boolean(key)?;
                 preferences.app_options.mute_wallpapers = enabled;
                 octos_win::wallpaper::set_muted(enabled);
+            }
+            "webDefaults" => {
+                let setting: octos_core::web_defaults::WebDefaultsSetting =
+                    serde_json::from_value(value.clone())
+                        .map_err(|err| anyhow!("setting webDefaults is invalid: {err}"))?;
+                preferences.app_options.web_defaults = setting.clone();
+                octos_win::wallpaper::set_web_defaults(setting);
+                info!("web wallpaper defaults updated");
             }
             "communityIndexUrl" => {
                 let text = value

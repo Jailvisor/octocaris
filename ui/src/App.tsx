@@ -11,6 +11,7 @@ import {
   type PlaylistSnapshot,
   type SettingsSnapshot,
   type OptionSpec,
+  type WebDefaultsSetting,
 } from './bridge'
 import { CommunityView } from './Community'
 import { DetailDrawer } from './DetailDrawer'
@@ -360,6 +361,7 @@ function ModDetail({
   onApply,
   onRemove,
   onOptionChange,
+  onResetDefaults,
   playlistEnabled,
 }: {
   card: ModCard
@@ -372,6 +374,7 @@ function ModDetail({
   onApply: () => void
   onRemove: () => void
   onOptionChange: (id: string, value: unknown) => void
+  onResetDefaults: () => void
   playlistEnabled: boolean
 }) {
   const { t } = useTranslation()
@@ -426,6 +429,17 @@ function ModDetail({
           disabled={!card.entry_url || !selectedMonitor}
         >
           {t('library.setWallpaper')}
+        </button>
+      </div>
+
+      <div className="detail-actions">
+        <button
+          type="button"
+          className="button ghost"
+          title={t('library.restoreDefaultsHint')}
+          onClick={onResetDefaults}
+        >
+          {t('library.restoreDefaults')}
         </button>
       </div>
 
@@ -1195,16 +1209,34 @@ function SettingsView({
   onOpenFolder,
   settings,
   onSetSetting,
+  onSetWebDefaults,
 }: {
   desktopIcons: boolean
   onToggleDesktopIcons: () => void
   onOpenFolder: () => void
   settings: SettingsSnapshot
   onSetSetting: (key: keyof SettingsSnapshot, value: boolean | number | string) => void
+  onSetWebDefaults: (value: WebDefaultsSetting) => void
 }) {
   const { t, i18n } = useTranslation()
   const language: AppLanguage = i18n.language.toLowerCase().startsWith('zh') ? 'zh-CN' : 'en'
   const [communitySource, setCommunitySource] = useState(settings.communityIndexUrl ?? '')
+  const defaults = settings.webDefaults
+  const fields = defaults.fields
+  const patchField = (name: string, value: unknown) => {
+    const next = { ...fields }
+    if (value === '' || value === null || value === undefined) {
+      delete next[name]
+    } else {
+      next[name] = value
+    }
+    onSetWebDefaults({ enabled: defaults.enabled, fields: next })
+  }
+  const numberField = (name: string, fallback: number) =>
+    typeof fields[name] === 'number' ? (fields[name] as number) : fallback
+  const booleanField = (name: string) => fields[name] === true
+  const stringField = (name: string) =>
+    typeof fields[name] === 'string' ? (fields[name] as string) : ''
 
   useEffect(() => {
     setCommunitySource(settings.communityIndexUrl ?? '')
@@ -1262,6 +1294,70 @@ function SettingsView({
           </button>
         </div>
       </div>
+      <div className="setting-row">
+        <div>
+          <h3>{t('settings.webDefaults.title')}</h3>
+          <p>{t('settings.webDefaults.desc')}</p>
+        </div>
+        <div className="setting-tail">
+          <SettingSwitch
+            checked={defaults.enabled}
+            label={t('settings.webDefaults.title')}
+            onChange={(enabled) => onSetWebDefaults({ enabled, fields })}
+          />
+        </div>
+      </div>
+      {defaults.enabled && (
+        <div className="setting-row web-defaults">
+          <div>
+            <h3>{t('settings.webDefaults.fieldsTitle')}</h3>
+            <p>{t('settings.webDefaults.fieldsDesc')}</p>
+          </div>
+          <div className="setting-tail web-defaults-fields">
+            <label className="inline-field">
+              {t('settings.webDefaults.bgmVolume')}
+              <input
+                type="number"
+                min={0}
+                max={1}
+                step={0.1}
+                value={numberField('bgmVolume', 0)}
+                aria-label={t('settings.webDefaults.bgmVolume')}
+                onChange={(event) => patchField('bgmVolume', Number(event.target.value))}
+              />
+            </label>
+            <label className="inline-field">
+              <input
+                type="checkbox"
+                checked={booleanField('mouseTracking')}
+                onChange={(event) => patchField('mouseTracking', event.target.checked)}
+              />
+              {t('settings.webDefaults.mouseTracking')}
+            </label>
+            <label className="inline-field">
+              <input
+                type="checkbox"
+                checked={booleanField('mouseTrial')}
+                onChange={(event) => patchField('mouseTrial', event.target.checked)}
+              />
+              {t('settings.webDefaults.mouseTrial')}
+            </label>
+            <label className="inline-field">
+              {t('settings.webDefaults.textureResolution')}
+              <select
+                value={stringField('textureResolution')}
+                aria-label={t('settings.webDefaults.textureResolution')}
+                onChange={(event) => patchField('textureResolution', event.target.value)}
+              >
+                <option value="">{t('settings.webDefaults.unset')}</option>
+                <option value="2k">2k</option>
+                <option value="4k">4k</option>
+                <option value="8k">8k</option>
+              </select>
+            </label>
+          </div>
+        </div>
+      )}
       <div className="setting-row">
         <div>
           <h3>{t('settings.language.title')}</h3>
@@ -1381,6 +1477,7 @@ export default function App() {
     memorySaver: true,
     muteWallpapers: false,
     communityIndexUrl: '',
+    webDefaults: { enabled: false, fields: {} },
   })
   const [library, setLibrary] = useState<LibrarySnapshot | null>(null)
   const [community, setCommunity] = useState<CommunitySnapshot | null>(null)
@@ -1647,6 +1744,23 @@ export default function App() {
     } else {
       setSettings((current) => ({ ...current, [key]: value }) as SettingsSnapshot)
     }
+  }
+
+  function setWebDefaults(value: WebDefaultsSetting) {
+    if (isHosted()) {
+      send({ type: 'set-setting', key: 'webDefaults', value })
+    }
+    setSettings((current) => ({ ...current, webDefaults: value }))
+  }
+
+  function resetWebDefaults(folder: string | null) {
+    if (isHosted()) {
+      send({ type: 'reset-web-defaults', folder })
+    }
+    setNotice({
+      message: t('library.defaultsReset'),
+      tone: 'success',
+    })
   }
 
   function toggleWallpaperVisibility() {
@@ -2038,6 +2152,7 @@ export default function App() {
                       onMonitorChange={setSelectedMonitor}
                       onApply={applySelectedMod}
                       onRemove={() => removeMod(selectedCard.folder_path)}
+                      onResetDefaults={() => resetWebDefaults(selectedCard.folder_path)}
                       playlistEnabled={playlist.enabled}
                       onOptionChange={(id, value) =>
                         changeOption(selectedCard.folder_path, id, value)
@@ -2075,6 +2190,7 @@ export default function App() {
             onOpenFolder={openWallpapersFolder}
             settings={settings}
             onSetSetting={setSetting}
+            onSetWebDefaults={setWebDefaults}
           />
         )}
       </main>

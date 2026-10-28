@@ -10,6 +10,7 @@ use anyhow::{Result, anyhow};
 use octos_core::hooks::{HookEvent, scripts_for_event};
 use octos_core::options::OptionsMap;
 use octos_core::session::Session;
+use octos_core::web_defaults::WebDefaultsSetting;
 use octos_protocol::{WallpaperHost, dispatch, options_event, redirect_event};
 use octos_webview::{CompositionDevice, WallpaperWebView, execute_script, navigate, post_json};
 use tracing::{debug, info, warn};
@@ -62,6 +63,10 @@ struct MonitorSlot {
     webview: Option<WallpaperWebView>,
     entry_url: Option<String>,
     mod_key: Option<String>,
+    /// Defaults script registered on the live controller (if any). Scripts are
+    /// bound to a controller for its whole lifetime, so switching to a mod with
+    /// a different script has to recreate it instead of navigating in place.
+    defaults_script: Option<String>,
     user_visible: bool,
     fullscreen: bool,
     /// A controller create call is in flight; another reconcile must not start
@@ -91,6 +96,7 @@ impl MonitorSlot {
             webview: None,
             entry_url: None,
             mod_key: None,
+            defaults_script: None,
             user_visible: true,
             fullscreen: false,
             creating: false,
@@ -141,6 +147,8 @@ struct WallpaperState {
     last_foreground: HWND,
     last_fullscreen_check: Instant,
     last_overlay_check: Instant,
+    /// App-level defaults seeded into every old-style web wallpaper.
+    web_defaults: WebDefaultsSetting,
 }
 
 impl Default for WallpaperState {
@@ -161,6 +169,7 @@ impl Default for WallpaperState {
             last_foreground: HWND::default(),
             last_fullscreen_check: Instant::now(),
             last_overlay_check: Instant::now(),
+            web_defaults: WebDefaultsSetting::default(),
         }
     }
 }
@@ -350,20 +359,82 @@ pub fn set_pause_fullscreen(enabled: bool) {
 pub fn set_all_mod(mod_key: impl Into<String>, defaults: OptionsMap) {
     let mod_key = mod_key.into();
     let _ = with_state(|state| {
-        let monitors: Vec<String> = state
-            .slots
-            .iter()
-            .map(|slot| slot.device_name.clone())
-            .collect();
-        for monitor in monitors {
-            state.session.select(monitor, mod_key.clone());
+        let WallpaperState { slots, session, .. } = state;
+        for slot in slots.iter_mut() {
+            session.select(slot.device_name.clone(), mod_key.clone());
+            // Without this the controller created on the next reconcile has no
+            // mod key, so the wallpaper's octos-defaults.json never runs.
+            slot.mod_key = Some(mod_key.clone());
         }
-        state.session.load_options(mod_key, &defaults, None);
+        session.load_options(mod_key, &defaults, None);
     });
 }
 
 pub fn set_all_mod_key(mod_key: impl Into<String>) {
     set_all_mod(mod_key, OptionsMap::default());
+}
+
+/// Replace the app-level defaults.
+///
+/// Document-created scripts are fixed per controller, so wallpapers whose
+/// generated script would change are closed and recreated by the next
+/// reconcile pass.
+pub fn set_web_defaults(setting: WebDefaultsSetting) {
+    let _ = with_state(|state| {
+        if state.web_defaults == setting {
+            return Ok(());
+        }
+        state.web_defaults = setting;
+        {
+            let WallpaperState {
+                slots,
+                wallpapers_dir,
+                web_defaults,
+                ..
+            } = state;
+            for slot in slots.iter_mut() {
+                let script =
+                    defaults_script_for(wallpapers_dir, slot.mod_key.as_deref(), web_defaults);
+                if slot.webview.is_some() && slot.defaults_script != script {
+                    slot.close_webview();
+                }
+            }
+        }
+        state.reconcile()
+    });
+}
+
+/// Forget which defaults were applied for one mod (every monitor) and reload
+/// it, so the next load seeds the defaults again. `None` means every wallpaper.
+pub fn reset_defaults(mod_key: Option<&str>) -> usize {
+    with_state(|state| {
+        let WallpaperState {
+            slots,
+            wallpapers_dir,
+            ..
+        } = state;
+        let target = mod_key.map(|key| mod_folder(wallpapers_dir, key));
+        let mut reset = 0usize;
+        for slot in slots.iter() {
+            let Some(key) = slot.mod_key.as_deref() else {
+                continue;
+            };
+            let folder = mod_folder(wallpapers_dir, key);
+            if target.as_ref().is_some_and(|target| *target != folder) {
+                continue;
+            }
+            let Some(script) = octos_core::web_defaults::reset_script(&folder) else {
+                continue;
+            };
+            if let Some(webview) = slot.webview.as_ref()
+                && execute_script(&webview.webview, &script).is_ok()
+            {
+                reset += 1;
+            }
+        }
+        reset
+    })
+    .unwrap_or(0)
 }
 
 pub fn monitor_ids() -> Vec<String> {
@@ -488,16 +559,28 @@ pub fn switch_mod_all(
     with_state(|state| {
         let mut navigated = 0usize;
         {
-            let WallpaperState { slots, session, .. } = state;
-            // Load the incoming mod's options before navigating: the
-            // NavigationCompleted handler reads the live session when it emits
-            // options-load, and the page must not see the previous mod's values.
+            let WallpaperState {
+                slots,
+                session,
+                wallpapers_dir,
+                web_defaults,
+                ..
+            } = state;
             session.load_options(mod_key.clone(), &defaults, stored.as_ref());
+            // Document-created scripts are fixed for a controller's lifetime.
+            // Navigating in place is only safe when the incoming mod does not
+            // need a different (or its first) defaults script.
+            let target_defaults =
+                defaults_script_for(wallpapers_dir, Some(mod_key.as_str()), web_defaults);
             for slot in slots.iter_mut() {
                 session.select(slot.device_name.clone(), mod_key.clone());
                 slot.mod_key = Some(mod_key.clone());
                 slot.entry_url = Some(entry_url.clone());
                 slot.user_visible = true;
+                if slot.webview.is_some() && slot.defaults_script != target_defaults {
+                    slot.close_webview();
+                    continue;
+                }
                 let mut failed = false;
                 if let Some(webview) = slot.webview.as_ref() {
                     match navigate(&webview.webview, &entry_url) {
@@ -874,10 +957,12 @@ impl WallpaperState {
         let loaded_device = device_name.clone();
         let failed_device = device_name.clone();
 
-        let defaults_script = self.slots[index]
-            .mod_key
-            .as_deref()
-            .and_then(|key| octos_core::web_defaults::script_for_folder(std::path::Path::new(key)));
+        let defaults_script = defaults_script_for(
+            &self.wallpapers_dir,
+            self.slots[index].mod_key.as_deref(),
+            &self.web_defaults,
+        );
+        self.slots[index].defaults_script = defaults_script.clone();
         self.slots[index].creating = true;
         let created = dcomp.create_wallpaper_controller(
             &environment,
@@ -1545,6 +1630,30 @@ impl WallpaperHost for ProtocolHost {
     fn redirect(&mut self, receiver_id: &str, message: serde_json::Value) {
         self.pending_redirect = Some((receiver_id.to_string(), message));
     }
+}
+
+/// Resolve a mod key to its folder.
+///
+/// The key is an absolute folder at startup and when restored from
+/// preferences, but a bare folder name when the selection comes from the
+/// library or rotation; both have to resolve.
+fn mod_folder(wallpapers_dir: &std::path::Path, mod_key: &str) -> PathBuf {
+    let path = std::path::Path::new(mod_key);
+    if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        wallpapers_dir.join(mod_key)
+    }
+}
+
+/// Defaults script for a mod key, merged with the app-level defaults.
+fn defaults_script_for(
+    wallpapers_dir: &std::path::Path,
+    mod_key: Option<&str>,
+    global: &WebDefaultsSetting,
+) -> Option<String> {
+    let key = mod_key?;
+    octos_core::web_defaults::script_for_folder(&mod_folder(wallpapers_dir, key), global)
 }
 
 fn handle_wallpaper_message(device_name: &str, hwnd: HWND, webview: &ICoreWebView2, text: &str) {

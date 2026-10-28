@@ -71,6 +71,11 @@ pub enum UiRequest {
     CommunityOpenSource {
         folder: String,
     },
+    /// Drop the applied-defaults markers for one mod (or every mod) and reload.
+    ResetWebDefaults {
+        #[serde(default)]
+        folder: Option<String>,
+    },
     OpenWallpapersFolder,
     RefreshLibrary,
     GetWallpaperVisibility,
@@ -152,6 +157,15 @@ mod tests {
             .unwrap(),
             r#"{"type":"community-open-source","folder":"2961764492"}"#
         );
+        assert_eq!(
+            serde_json::to_string(&UiRequest::ResetWebDefaults {
+                folder: Some("C:\\mods\\demo".to_string())
+            })
+            .unwrap(),
+            r#"{"type":"reset-web-defaults","folder":"C:\\mods\\demo"}"#
+        );
+        let parsed: UiRequest = serde_json::from_str(r#"{"type":"reset-web-defaults"}"#).unwrap();
+        assert_eq!(parsed, UiRequest::ResetWebDefaults { folder: None });
         let parsed: UiRequest = serde_json::from_str(r#"{"type":"community-get-index"}"#).unwrap();
         assert_eq!(parsed, UiRequest::CommunityGetIndex { refresh: false });
     }

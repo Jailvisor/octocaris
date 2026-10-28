@@ -64,7 +64,10 @@
     "selectedCount": "{{count}} selected",
     "clearSelection": "Clear selection",
     "selectionTitle": "Bulk actions",
-    "detailTitle": "Wallpaper details"
+    "detailTitle": "Wallpaper details",
+    "restoreDefaults": "Restore defaults",
+    "restoreDefaultsHint": "Forget which defaults were applied to this wallpaper so the next load seeds them again (per screen).",
+    "defaultsReset": "Defaults restored, reloading the wallpaper"
   },
   "settings": {
     "title": "Settings",
@@ -112,6 +115,17 @@
       "desc": "Leave empty for the built-in catalog. A jsDelivr mirror works when GitHub raw is slow.",
       "save": "Save",
       "placeholder": "https://raw.githubusercontent.com/…/index.json"
+    },
+    "webDefaults": {
+      "title": "Web wallpaper defaults",
+      "desc": "Seed these values once into every old-style web wallpaper. Values you tune per screen in the wallpaper panel are kept; defaults are only rewritten when they change.",
+      "fieldsTitle": "Default values",
+      "fieldsDesc": "Position and scale are saved per screen by the wallpaper panel and are never set here.",
+      "bgmVolume": "BGM volume",
+      "mouseTracking": "Eye tracking",
+      "mouseTrial": "Cursor trail",
+      "textureResolution": "Texture resolution",
+      "unset": "Not set"
     }
   },
   "language": {
