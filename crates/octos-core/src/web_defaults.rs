@@ -62,13 +62,16 @@ impl Default for WebDefaults {
     }
 }
 
-/// App-level defaults from preferences, applied to every old-style package.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-#[serde(default, rename_all = "camelCase")]
-pub struct WebDefaultsSetting {
-    pub enabled: bool,
-    /// Field name -> default value, e.g. `{"bgmVolume": 0, "mouseTracking": false}`.
-    pub fields: Map<String, Value>,
+/// Values seeded into every web wallpaper on first run. Deliberately not
+/// user-configurable: BGM off, no eye tracking, no cursor trail, 4k textures.
+/// The wallpaper's own panel and per-screen tuning still win afterwards.
+pub fn builtin_fields() -> Map<String, Value> {
+    let mut fields = Map::new();
+    fields.insert("bgmVolume".to_string(), Value::from(0));
+    fields.insert("mouseTracking".to_string(), Value::Bool(false));
+    fields.insert("mouseTrial".to_string(), Value::Bool(false));
+    fields.insert("textureResolution".to_string(), Value::from("4k"));
+    fields
 }
 
 /// Load and validate `<folder>/octos-defaults.json`.
@@ -114,10 +117,12 @@ pub fn script(defaults: &WebDefaults) -> String {
 /// Returns `None` for packages that do not follow the `loadJson.fileNames`
 /// convention (newer packages keep a `SettingModel` instead).
 pub fn storage_key(folder: &Path) -> Option<String> {
-    let load_text = std::fs::read_to_string(folder.join("loadJson.json")).ok()?;
-    let load_config: Value = serde_json::from_str(&load_text).ok()?;
-    if load_config.get("SettingModel").is_some() {
-        return None;
+    let load_config = read_load_config(folder)?;
+    // Newer packages keep one settings object per skeleton in
+    // `localStorage["<skel>"]`, wrapped as `{SettingModel, EventInfos, ...}`.
+    if let Some(model) = load_config.get("SettingModel").and_then(Value::as_object) {
+        let skel = model.get("skel")?.as_str()?.trim();
+        return (!skel.is_empty()).then(|| skel.to_string());
     }
     let key = load_config
         .get("fileNames")?
@@ -127,6 +132,42 @@ pub fn storage_key(folder: &Path) -> Option<String> {
     (!key.trim().is_empty()).then(|| key.to_string())
 }
 
+fn read_load_config(folder: &Path) -> Option<Value> {
+    let text = std::fs::read_to_string(folder.join("loadJson.json")).ok()?;
+    serde_json::from_str(&text).ok()
+}
+
+/// Target field name inside a `SettingModel`: the same name when the package
+/// has it, or the family's own spelling for the settings we expose.
+fn model_field(name: &str, model: &Map<String, Value>) -> Option<String> {
+    if model.contains_key(name) {
+        return Some(name.to_string());
+    }
+    let alias = match name {
+        "textureResolution" => "resolution",
+        _ => return None,
+    };
+    model.contains_key(alias).then(|| alias.to_string())
+}
+
+/// Script for a `SettingModel` package: patch fields inside the stored
+/// `{SettingModel, EventInfos, AnimationsTexts}` wrapper, seeding it from the
+/// packaged model on first run. Same once-per-field semantics as old packages.
+fn model_script(
+    key: &str,
+    model: &Map<String, Value>,
+    extra: &Map<String, Value>,
+    fields: &Map<String, Value>,
+) -> String {
+    let key_json = serde_json::to_string(key).unwrap_or_default();
+    let base_json = Value::Object(model.clone()).to_string();
+    let extra_json = Value::Object(extra.clone()).to_string();
+    let fields_json = Value::Object(fields.clone()).to_string();
+    format!(
+        r#"(function(){{const key={key_json};const base={base_json};const extra={extra_json};const d={fields_json};const mk="__octos_defaults__"+key;try{{const prev=JSON.parse(localStorage.getItem(mk)||"null");const raw=localStorage.getItem(key);const cur=raw?JSON.parse(raw):Object.assign({{}},extra,{{SettingModel:base}});const model=cur.SettingModel||{{}};const patch={{}};let changed=false;for(const f of Object.keys(d)){{if(!prev||!(f in prev)||JSON.stringify(prev[f])!==JSON.stringify(d[f])){{patch[f]=d[f];changed=true;}}}}if(!changed)return;if(base.version!==undefined)patch.version=base.version;cur.SettingModel=Object.assign({{}},model,patch);localStorage.setItem(key,JSON.stringify(cur));localStorage.setItem(mk,JSON.stringify(d));}}catch(_){{}}}})();"#
+    )
+}
+
 fn shared_field(name: &str) -> bool {
     !VISUAL_FIELDS.contains(&name)
 }
@@ -134,16 +175,42 @@ fn shared_field(name: &str) -> bool {
 /// Defaults script for one package: app-level defaults, overridden field by
 /// field by the package's own `octos-defaults.json`, applied with `once`
 /// semantics. `None` when there is nothing to apply.
-pub fn script_for_folder(folder: &Path, global: &WebDefaultsSetting) -> Option<String> {
-    let key = storage_key(folder)?;
-    let mut merged = Map::new();
-    if global.enabled {
-        for (field, value) in &global.fields {
-            if shared_field(field) {
-                merged.insert(field.clone(), value.clone());
+pub fn script_for_folder(folder: &Path) -> Option<String> {
+    let load_config = read_load_config(folder)?;
+
+    // New-style package: the settings live in `SettingModel`, keyed by skel.
+    if let Some(model) = load_config.get("SettingModel").and_then(Value::as_object) {
+        let skel = model.get("skel")?.as_str()?.trim();
+        if skel.is_empty() {
+            return None;
+        }
+        let mut fields = Map::new();
+        for (name, value) in &builtin_fields() {
+            if let Some(target) = model_field(name, model) {
+                fields.insert(target, value.clone());
             }
         }
+        if fields.is_empty() {
+            return None;
+        }
+        let mut extra = Map::new();
+        for name in ["EventInfos", "AnimationsTexts"] {
+            if let Some(value) = load_config.get(name) {
+                extra.insert(name.to_string(), value.clone());
+            }
+        }
+        return Some(model_script(skel, model, &extra, &fields));
     }
+
+    // Old-style package: one flat settings object in localStorage.
+    let key = load_config
+        .get("fileNames")?
+        .as_array()?
+        .first()?
+        .as_str()?
+        .to_string();
+    let mut merged = builtin_fields();
+    // A package's own defaults are more specific than the built-in policy.
     if let Some(defaults) = load(folder)
         && let Some(values) = defaults.storage.get(&key)
     {
@@ -201,7 +268,7 @@ mod tests {
         assert!(script.contains("CH0178_home"));
         assert!(script.contains("\"bgmVolume\":0"));
         assert!(script.contains("const f=false"));
-        assert!(script_for_folder(dir.path(), &WebDefaultsSetting::default()).is_some());
+        assert!(script_for_folder(dir.path()).is_some());
     }
 
     #[test]
@@ -244,7 +311,7 @@ mod tests {
     }
 
     #[test]
-    fn app_defaults_merge_with_package_overrides_and_skip_visual_fields() {
+    fn package_defaults_refine_the_builtin_policy() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(
             dir.path().join("loadJson.json"),
@@ -254,20 +321,17 @@ mod tests {
         write_defaults(
             dir.path(),
             r#"{"schemaVersion":1,"mode":"force","storage":{"CH0139_home":{
-                "bgmVolume":0.3,"position":{"x":1440,"y":1800},"scale":1.5}}}"#,
+                "bgmVolume":0.3,"talkVolume":0.9,"position":{"x":1440,"y":1800},"scale":1.5}}}"#,
         );
-        let global: WebDefaultsSetting = serde_json::from_str(
-            r#"{"enabled":true,"fields":{"bgmVolume":0,"mouseTracking":false,
-                "textureResolution":"4k","position":{"x":0,"y":0}}}"#,
-        )
-        .unwrap();
-        let script = script_for_folder(dir.path(), &global).unwrap();
-        // Global fields apply...
+        let script = script_for_folder(dir.path()).unwrap();
+        // Built-in policy: no BGM, no tracking, 4k.
         assert!(script.contains("\"mouseTracking\":false"));
+        assert!(script.contains("\"mouseTrial\":false"));
         assert!(script.contains("\"textureResolution\":\"4k\""));
-        // ...the package overrides the shared value...
+        // A package may override the fields it cares about...
         assert!(script.contains("\"bgmVolume\":0.3"));
-        // ...and geometry never comes from defaults, no matter who wrote it.
+        assert!(script.contains("\"talkVolume\":0.9"));
+        // ...but geometry never comes from defaults, no matter who wrote it.
         assert!(!script.contains("position"));
         assert!(!script.contains("scale"));
         // The merged script is a once script even when the package said force.
@@ -276,19 +340,38 @@ mod tests {
     }
 
     #[test]
-    fn disabled_app_defaults_leave_the_package_alone() {
+    fn setting_model_packages_patch_inside_the_stored_wrapper() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("loadJson.json"),
+            r#"{"SettingModel":{"version":5,"skel":"CH0284_home.skel","bgmVolume":0.1,
+                "resolution":"2k","showTouch":true,"scale":0.57},
+                "EventInfos":[1],"AnimationsTexts":{"a":"b"}}"#,
+        )
+        .unwrap();
+        assert_eq!(storage_key(dir.path()).as_deref(), Some("CH0284_home.skel"));
+        let script = script_for_folder(dir.path()).unwrap();
+        // Fields are written under SettingModel, with the family's own name.
+        assert!(script.contains(r#"const key="CH0284_home.skel""#));
+        assert!(script.contains(r#""bgmVolume":0"#));
+        assert!(script.contains(r#""resolution":"4k""#));
+        // Fields this family does not have are not invented.
+        assert!(!script.contains("mouseTracking"));
+        assert!(!script.contains("mouseTrial"));
+        // The stored wrapper keeps the packaged extras and the version.
+        assert!(script.contains("EventInfos"));
+        assert!(script.contains("AnimationsTexts"));
+        assert!(script.contains("patch.version=base.version"));
+    }
+
+    #[test]
+    fn builtin_policy_covers_packages_without_a_defaults_file() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("loadJson.json"), r#"{"fileNames":["x"]}"#).unwrap();
-        let global = WebDefaultsSetting {
-            enabled: false,
-            fields: serde_json::from_str(r#"{"bgmVolume":0}"#).unwrap(),
-        };
-        assert!(script_for_folder(dir.path(), &global).is_none());
-        write_defaults(
-            dir.path(),
-            r#"{"schemaVersion":1,"storage":{"x":{"bgmVolume":0}}}"#,
-        );
-        assert!(script_for_folder(dir.path(), &global).is_some());
+        let script = script_for_folder(dir.path()).unwrap();
+        assert!(script.contains(r#""bgmVolume":0"#));
+        assert!(script.contains(r#""mouseTrial":false"#));
+        assert!(script.contains(r#""textureResolution":"4k""#));
     }
 
     #[test]
@@ -312,19 +395,26 @@ mod tests {
     }
 
     #[test]
-    fn ignores_new_style_packages() {
+    fn new_style_packages_ignore_octos_defaults_files() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(
             dir.path().join("loadJson.json"),
-            r#"{"SettingModel":{"version":5,"skel":"CH0355_home.skel"}}"#,
+            r#"{"SettingModel":{"version":5,"skel":"CH0355_home.skel","bgmVolume":0.1,
+                "resolution":"2k","talkVolume":0.5}}"#,
         )
         .unwrap();
         write_defaults(
             dir.path(),
-            r#"{"schemaVersion":1,"storage":{"CH0355_home.skel":{"bgmVolume":0}}}"#,
+            r#"{"schemaVersion":1,"storage":{"CH0355_home.skel":{"talkVolume":0.9}}}"#,
         );
         assert!(load(dir.path()).is_some());
-        assert!(script_for_folder(dir.path(), &WebDefaultsSetting::default()).is_none());
+        // The package file is for flat (old-style) storage only; new-style
+        // packages get the built-in policy through SettingModel instead.
+        let script = script_for_folder(dir.path()).unwrap();
+        assert!(script.contains(r#""bgmVolume":0"#));
+        assert!(script.contains(r#""resolution":"4k""#));
+        // talkVolume came only from the ignored octos-defaults.json.
+        assert!(!script.contains(r#""talkVolume":0.9"#));
     }
 
     #[test]

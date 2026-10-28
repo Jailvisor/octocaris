@@ -2464,32 +2464,3 @@ h1 {
   }
 }
 
-/* App-level defaults for old-style web wallpapers. */
-.web-defaults-fields {
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 10px 18px;
-  max-width: 60%;
-}
-
-.inline-field {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 0.85rem;
-  color: var(--muted);
-}
-
-.inline-field input[type='number'] {
-  width: 76px;
-}
-
-.inline-field input[type='checkbox'] {
-  width: 16px;
-  height: 16px;
-  accent-color: var(--accent, #6ea8ff);
-}
-
-.inline-field select {
-  min-width: 92px;
-}

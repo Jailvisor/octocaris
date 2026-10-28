@@ -116,17 +116,6 @@
       "desc": "留空使用内置目录。GitHub raw 慢时可以换成 jsDelivr 镜像。",
       "save": "保存",
       "placeholder": "https://raw.githubusercontent.com/…/index.json"
-    },
-    "webDefaults": {
-      "title": "Web 壁纸默认值",
-      "desc": "对老式 web 壁纸统一写入一次默认参数；之后你在壁纸面板里按屏幕调的值会保留。只在参数变化时重新写入。",
-      "fieldsTitle": "默认参数",
-      "fieldsDesc": "位置和缩放由壁纸面板按屏幕保存，这里不设置。",
-      "bgmVolume": "BGM 音量",
-      "mouseTracking": "视线追踪",
-      "mouseTrial": "鼠标轨迹",
-      "textureResolution": "贴图分辨率",
-      "unset": "不设置"
     }
   },
   "language": {

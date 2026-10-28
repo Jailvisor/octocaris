@@ -12,7 +12,7 @@
 - 2026-10-24：前端品牌改为 **Octocaris**（窗口标题、托盘提示、菜单、MessageBox、UI 文案与图标）；二进制 `octocaris.exe`、数据目录 `%LOCALAPPDATA%\Octos`、`app.octos`/`local.octos` 虚拟主机和 mutex 仍保持原名以兼容旧数据与 mod。
 - 2026-10-24：**支持导入 Wallpaper Engine web 包**（`project.json` type=web 自动生成 `octos.json`，scene/video 明确拒绝），并清理中断安装留下的 staging 目录；见 `docs/workshop-import.md`。
 - 2026-10-24：**图片壁纸缩略图**：导入时生成 `thumbnail.jpg`（最长边 512），卡片/轮换列表优先加载；存量图片启动时后台回填；外部 mod 可自带 `thumbnail.*`。见 `docs/image-wallpapers.md`。
-- 2026-10-28：**Web 壁纸默认参数改为 `once` + 程序级默认值**：默认值只在每个字段首次出现或改动时写入一次，之后保留用户在壁纸面板里按屏幕调好的值；`position`/`scale` 永不从默认值写入；旧包的 `force` 按 `once` 执行（已上传的社区包无需重发）；设置页新增“Web 壁纸默认值”，抽屉新增“恢复默认参数”；同时修复首次启动 / 库切换时 mod key 解析不到文件夹、以及原地切 mod 不更新注入脚本的问题。见 `docs/web-defaults.md`。
+- 2026-10-28：**Web 壁纸默认参数**：内置固定默认值（BGM 0、关闭视线追踪/鼠标轨迹、贴图 4k），每个字段首次出现或改动时写入一次，之后保留用户在壁纸面板里按屏幕调好的值；`position`/`scale` 永不从默认值写入；支持老式 `fileNames` 包与 `SettingModel` 新式包；旧包的 `force` 按 `once` 执行（已上传的社区包无需重发）；抽屉新增“恢复默认参数”；同时修复首次启动 / 库切换时 mod key 解析不到文件夹、以及原地切 mod 不更新注入脚本的问题。见 `docs/web-defaults.md`。
 - 新仓库：`/home/lzt/codehub/rust/octos/octos-rs`（本目录）。
 - 上游参考：`/home/lzt/codehub/rust/octos/octos`，**只读**，用于行为对照和兼容性测试。Rust ↔ C++ 的模块映射、有意差异和已踩过的偏差见 `docs/upstream-map.md`；新增 Win32/WebView2 行为前先对照它。
 - 已批准计划：`~/.claude/plans/unified-dancing-lollipop.md`。仓库内的架构决策写到 `docs/`。

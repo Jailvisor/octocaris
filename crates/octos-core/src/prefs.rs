@@ -52,9 +52,6 @@ pub struct AppOptions {
     /// Override the community catalog URL (empty means the built-in default).
     #[serde(default)]
     pub community_index_url: Option<String>,
-    /// Defaults seeded into every old-style web wallpaper before its page runs.
-    #[serde(default, rename = "webDefaults")]
-    pub web_defaults: crate::web_defaults::WebDefaultsSetting,
     #[serde(flatten)]
     pub extra: Map<String, Value>,
 }
@@ -69,7 +66,6 @@ impl Default for AppOptions {
             memory_saver: true,
             mute_wallpapers: false,
             community_index_url: None,
-            web_defaults: crate::web_defaults::WebDefaultsSetting::default(),
             extra: Map::new(),
         }
     }

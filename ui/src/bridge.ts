@@ -24,11 +24,6 @@ export type ModCard = {
   options: Record<string, OptionSpec>
 }
 
-export type WebDefaultsSetting = {
-  enabled: boolean
-  fields: Record<string, unknown>
-}
-
 export type SettingsSnapshot = {
   runOnStartup: boolean
   enableGpu: boolean
@@ -37,7 +32,6 @@ export type SettingsSnapshot = {
   memorySaver: boolean
   muteWallpapers: boolean
   communityIndexUrl: string
-  webDefaults: WebDefaultsSetting
 }
 
 export type PlaylistSnapshot = {

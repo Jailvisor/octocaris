@@ -90,6 +90,11 @@
 
 示例：2945877251 关闭 BGM、保持鼠标轨迹、关闭视线追踪。
 
+**内置默认策略**（不需要任何文件、也没有设置界面）：每张 web 壁纸首次加载时写入
+`bgmVolume: 0`、`mouseTracking: false`、`mouseTrial: false`、`textureResolution: "4k"`。
+包内 `octos-defaults.json` 只用来**细化**这四个值（作者自己的取舍），
+不会被用来设置 `position`/`scale`。
+
 ## 2. 应用侧实现
 
 新增 `crates/octos-core/src/web_defaults.rs`（Linux 可测）：
@@ -100,34 +105,35 @@ pub const VISUAL_FIELDS: [&str; 2] = ["position", "scale"];
 
 pub struct WebDefaults { pub mode: Mode, pub storage: BTreeMap<String, Map<String, Value>> }
 
-/// 程序级默认值（preferences.json 的 appOptions.webDefaults）
-pub struct WebDefaultsSetting { pub enabled: bool, pub fields: Map<String, Value> }
-
+pub fn builtin_fields() -> Map<String, Value>;                     // 上述四项
 pub fn load(folder: &Path) -> Option<WebDefaults>;                 // 解析 + 校验
-pub fn script(defaults: &WebDefaults) -> String;                   // 生成注入脚本
-pub fn storage_key(folder: &Path) -> Option<String>;               // loadJson.fileNames[0]
-pub fn script_for_folder(folder: &Path, global: &WebDefaultsSetting) -> Option<String>;
+pub fn script(defaults: &WebDefaults) -> String;                   // 老式包脚本
+pub fn storage_key(folder: &Path) -> Option<String>;               // fileNames[0] 或 SettingModel.skel
+pub fn script_for_folder(folder: &Path) -> Option<String>;
 pub fn reset_script(folder: &Path) -> Option<String>;              // 清记录并重载
 ```
 
 `Mode` 是 `Fill` / `Once` / `Force`（=Once）/ `Pin`。
 
-`script_for_folder` 的合并顺序（后者覆盖前者，`VISUAL_FIELDS` 始终跳过）：
+`script_for_folder` 按 `loadJson.json` 的形态分两路：
 
-1. 程序级默认值（`appOptions.webDefaults.enabled` 为真时，作用于所有老式 web 壁纸）；
-2. 包内 `octos-defaults.json` 中与 `storage_key` 匹配的那一项（字段级覆盖）。
+1. **老式包**（`fileNames`）：合并 `builtin_fields()` 与该包的 `octos-defaults.json`
+   （包内值优先，`VISUAL_FIELDS` 始终跳过），按 `Once` 写入扁平的 localStorage 键。
+2. **新式包**（`SettingModel`）：键是 `SettingModel.skel`，值形如
+   `{SettingModel, EventInfos, AnimationsTexts}`。按内置字段逐项写入
+   `SettingModel`，字段名跟随该包（`textureResolution` → `resolution`），
+   该包没有的字段跳过；写入时保留 `version` 和另外两个键。
+   包内 `octos-defaults.json` 对新式包无效。
 
-合并结果固定按 `Once` 生成脚本；没有任何字段可写时返回 `None`，不注入。
+两种形态都按“字段首次出现/改动才写一次”的 `Once` 语义生成脚本；
+没有任何字段可写时返回 `None`，不注入。
 
-### 2.1 程序级默认值与“恢复默认参数”
+### 2.1 “恢复默认参数”
 
-- 设置页“Web 壁纸默认值”：启用开关 + BGM 音量 / 视线追踪 / 鼠标轨迹 / 贴图分辨率。
-  保存到 `preferences.json` 的 `appOptions.webDefaults`，改动后立即重建用到不同脚本的
-  controller（`octos_win::wallpaper::set_web_defaults`）。
-- 壁纸详情抽屉“恢复默认参数” → `UiRequest::ResetWebDefaults` →
-  `reset_defaults()` 在该壁纸的每个 WebView 里删除
-  `__octos_defaults__<storage key>` 标记并重载，于是下次加载重新写入默认值。
+- 壁纸详情抽屉 → `UiRequest::ResetWebDefaults` → `reset_defaults()` 在该壁纸的每个
+  WebView 里删除 `__octos_defaults__<storage key>` 标记并重载，下次加载重新写入默认值。
   只影响有默认值的字段，用户调过的 `position`/`scale` 保持不变。
+- 每块显示器的存储前缀不同，标记也分开，所以恢复只作用于点的那张壁纸在每块屏上的记录。
 - 旧包兼容：已上传的 189 个社区包里的 `force` 按 `once` 执行，`position`/`scale` 被忽略，
   不需要重新上传。
 
