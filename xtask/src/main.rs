@@ -66,7 +66,47 @@ fn build() -> Result<()> {
         "--target",
         TARGET,
         "--release",
-    ]))
+    ]))?;
+    embed_icon()
+}
+
+/// Copy the application icon into the PE resources.
+///
+/// `lld-link` cannot take a `.res` file and the WSL toolchain has no resource
+/// compiler, so `scripts/embed-icon.py` patches the linked binary with LIEF.
+/// Set `OCTOS_ICON_PYTHON` to a Python that has `lief` installed.
+fn embed_icon() -> Result<()> {
+    let root = workspace_root();
+    let exe = root.join("target").join(TARGET).join("release").join("octocaris.exe");
+    let icon = root.join("assets").join("octocaris.ico");
+    if !exe.exists() || !icon.exists() {
+        return Ok(());
+    }
+    let python = std::env::var("OCTOS_ICON_PYTHON").unwrap_or_else(|_| "python3".to_string());
+    let staged = exe.with_extension("icon.exe");
+    let status = Command::new(&python)
+        .current_dir(&root)
+        .arg("scripts/embed-icon.py")
+        .arg(&exe)
+        .arg(&icon)
+        .arg(&staged)
+        .status();
+    match status {
+        Ok(status) if status.success() => {
+            std::fs::rename(&staged, &exe)
+                .with_context(|| format!("could not replace {}", exe.display()))?;
+            println!("embedded {}", icon.display());
+            Ok(())
+        }
+        _ => {
+            let _ = std::fs::remove_file(&staged);
+            println!(
+                "warning: icon not embedded (need python with lief: OCTOS_ICON_PYTHON=…); \
+                 the executable keeps the default icon"
+            );
+            Ok(())
+        }
+    }
 }
 
 fn deploy() -> Result<()> {
@@ -95,12 +135,6 @@ fn deploy() -> Result<()> {
         std::fs::remove_dir_all(&app_dir)?;
     }
     copy_dir(&ui_dist, &app_dir)?;
-
-    let icon = root.join("assets").join("octocaris.ico");
-    if icon.exists() {
-        std::fs::copy(&icon, deploy_dir.join("octocaris.ico"))
-            .with_context(|| format!("could not copy {}", icon.display()))?;
-    }
 
     let wallpapers = root.join("assets").join("wallpapers");
     if wallpapers.exists() {
