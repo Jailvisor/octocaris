@@ -346,7 +346,7 @@ export function CommunityView({
               >
                 {t('community.pagePrev')}
               </button>
-              <span className="tiny">
+              <span className="pager-status">
                 {t('community.pageStatus', { page: safePage + 1, pages: pageCount })}
               </span>
               <button

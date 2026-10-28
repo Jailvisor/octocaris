@@ -67,7 +67,8 @@
     "detailTitle": "Wallpaper details",
     "restoreDefaults": "Restore defaults",
     "restoreDefaultsHint": "Forget which defaults were applied to this wallpaper so the next load seeds them again (per screen).",
-    "defaultsReset": "Defaults restored, reloading the wallpaper"
+    "defaultsReset": "Defaults restored, reloading the wallpaper",
+    "removeConfirmHint": "The wallpaper files are deleted from the wallpapers folder. This cannot be undone."
   },
   "settings": {
     "title": "Settings",

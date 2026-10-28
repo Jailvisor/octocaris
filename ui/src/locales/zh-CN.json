@@ -67,7 +67,8 @@
     "detailTitle": "壁纸详情",
     "restoreDefaults": "恢复默认参数",
     "restoreDefaultsHint": "清除这张壁纸的“已应用默认值”记录，下次加载重新写入默认参数（每块屏独立）。",
-    "defaultsReset": "已恢复默认参数，壁纸正在重新加载"
+    "defaultsReset": "已恢复默认参数，壁纸正在重新加载",
+    "removeConfirmHint": "壁纸文件会从壁纸目录里删除，无法恢复。"
   },
   "settings": {
     "title": "设置",

@@ -1313,20 +1313,77 @@ h1 {
   margin-top: 10px;
 }
 
-.confirm-inline {
+/* Inline destructive confirmation in the wallpaper drawer. */
+.confirm-card {
   display: flex;
-  flex: 1 1 100%;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 10px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.03);
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 14px;
+  border: 1px solid rgba(229, 72, 77, 0.38);
+  border-radius: var(--radius-card);
+  background: rgba(229, 72, 77, 0.08);
 }
 
-.confirm-inline .tiny {
-  flex: 1 1 150px;
+.confirm-lead {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.confirm-icon {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.confirm-icon svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.confirm-copy {
+  min-width: 0;
+}
+
+.confirm-title {
+  margin: 0 0 3px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--text);
+}
+
+.confirm-copy .tiny {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.button.danger {
+  border-color: transparent;
+  background: var(--accent);
+  color: #fff;
+}
+
+.button.danger:hover:not(:disabled) {
+  border-color: transparent;
+  background: var(--accent-hover);
 }
 
 .muted {

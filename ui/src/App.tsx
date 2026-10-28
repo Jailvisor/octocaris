@@ -444,16 +444,24 @@ function ModDetail({
       </div>
 
       {confirmRemove && (
-        <div className="detail-actions">
-          <span className="confirm-inline">
-            <span className="tiny">{t('library.removeConfirm')}</span>
-            <button className="button ghost danger-text" onClick={onRemove}>
-              {t('library.confirm')}
-            </button>
-            <button className="button ghost" onClick={() => setConfirmRemove(false)}>
+        <div className="confirm-card" role="alertdialog" aria-label={t('library.removeConfirm')}>
+          <div className="confirm-lead">
+            <span className="confirm-icon" aria-hidden="true">
+              <WarnIcon />
+            </span>
+            <div className="confirm-copy">
+              <p className="confirm-title">{t('library.removeConfirm')}</p>
+              <p className="tiny">{t('library.removeConfirmHint')}</p>
+            </div>
+          </div>
+          <div className="confirm-actions">
+            <button type="button" className="button ghost" onClick={() => setConfirmRemove(false)}>
               {t('library.cancel')}
             </button>
-          </span>
+            <button type="button" className="button danger" onClick={onRemove}>
+              {t('library.confirm')}
+            </button>
+          </div>
         </div>
       )}
       {playlistEnabled && <p className="tiny playlist-hint">{t('playlist.overrideHint')}</p>}
@@ -469,6 +477,16 @@ function ModDetail({
         </div>
       )}
     </div>
+  )
+}
+
+function WarnIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M12 4.5l8 14H4l8-14z" />
+      <path d="M12 10v4.2" />
+      <path d="M12 17.2v.1" />
+    </svg>
   )
 }
 
